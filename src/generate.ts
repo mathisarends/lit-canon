@@ -7,6 +7,8 @@ import type { OpenAPIV3 } from "@scalar/openapi-types";
 import type { CodegenConfig, FeatureOptions, GenerateOptions, GenerateResult } from "./config.js";
 import { renderApi } from "./render-api.js";
 import { renderQueryFiles } from "./render-queries.js";
+import { renderProblems } from "./render-problems.js";
+import { validateExports } from "./validate-exports.js";
 import { collectOperations, identifier, operationName } from "./openapi.js";
 import { hasErrorCode, isWithin, listFiles, outputFiles } from "./files.js";
 
@@ -49,7 +51,17 @@ export async function generate(
   ) {
     throw new Error(`Output must be a dedicated generated directory: ${output}`);
   }
-  const existing = await outputFiles(output);
+  const preserved = new Set(config.preserveDirectories ?? []);
+  for (const name of preserved) {
+    if (
+      typeof name !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name) ||
+      name === "index.ts"
+    ) {
+      throw new Error(`Preserved directories must be top-level directory names: ${name}`);
+    }
+  }
+  const existing = await outputFiles(output, preserved);
   const spec = JSON.parse(await readFile(input, "utf8")) as OpenAPIV3.Document;
   if (!spec || !/^3\./.test(spec.openapi ?? "") || !spec.info || !spec.paths) {
     throw new Error("Input must be an OpenAPI 3 JSON document with info and paths");
@@ -58,6 +70,9 @@ export async function generate(
   const tags = [...operationsByTag.keys()].sort();
   const namespaces = new Set();
   for (const tag of tags) {
+    if (preserved.has(tag)) {
+      throw new Error(`Generated feature conflicts with a preserved directory: ${tag}`);
+    }
     const namespace = identifier(
       tag.replace(/-([a-z0-9])/g, (_, character) => character.toUpperCase()),
       "feature namespace",
@@ -136,6 +151,16 @@ export async function generate(
         modelsSource += "\nexport {};\n";
       }
       await writeFile(join(featureDir, "models.ts"), await format(modelsSource));
+      const problems = renderProblems(
+        tag,
+        operations,
+        header,
+        requestImport,
+        config.problems === true,
+      );
+      if (problems) {
+        await writeFile(join(featureDir, "problems.ts"), await format(problems));
+      }
       const aliases = Object.fromEntries(
         Object.entries(config.queryAliases?.[tag] ?? {}).map(([alias, members]) => [
           identifier(alias, "query alias"),
@@ -163,6 +188,7 @@ export async function generate(
         "",
         'export * from "./api";',
         'export * from "./models";',
+        ...(problems ? ['export * from "./problems";'] : []),
         ...(queries ? ['export * from "./queries";'] : []),
         ...(mutations ? ['export * from "./mutations";'] : []),
         ...(runtimeExports.length
@@ -177,6 +203,14 @@ export async function generate(
           : []),
         "",
       ].join("\n");
+      validateExports({
+        "api.ts": apiSource,
+        "models.ts": modelsSource,
+        ...(problems ? { "problems.ts": problems } : {}),
+        ...(queries ? { "queries.ts": queries } : {}),
+        ...(mutations ? { "mutations.ts": mutations } : {}),
+        "request exports": barrel,
+      });
       await writeFile(join(featureDir, "index.ts"), await format(barrel));
     }
     await writeFile(
@@ -197,7 +231,7 @@ export async function generate(
       }
     } else {
       // Check ownership again immediately before replacing the generated directory.
-      await outputFiles(output);
+      await outputFiles(output, preserved);
       const backup = join(temp, "previous");
       let moved = false;
       try {
@@ -208,17 +242,34 @@ export async function generate(
           throw error;
         }
       }
+      const movedDirectories: string[] = [];
       try {
+        if (moved) {
+          for (const name of preserved) {
+            try {
+              // Move the current tree at commit time instead of copying a stale snapshot.
+              await rename(join(backup, name), join(staged, name));
+              movedDirectories.push(name);
+            } catch (error) {
+              if (!hasErrorCode(error, "ENOENT")) {
+                throw error;
+              }
+            }
+          }
+        }
         await rename(staged, output);
       } catch (error) {
         if (moved) {
           try {
+            for (const name of movedDirectories.reverse()) {
+              await rename(join(staged, name), join(backup, name));
+            }
             await rename(backup, output);
           } catch (restoreError) {
             cleanup = false;
             throw new AggregateError(
               [error, restoreError],
-              `Could not replace or restore the client. Previous files are preserved at ${backup}`,
+              `Could not replace or restore the client. Previous files are preserved inside ${temp}`,
             );
           }
         }

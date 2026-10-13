@@ -6,18 +6,31 @@ export function isWithin(parent: string, child: string): boolean {
   return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
 }
 
-export async function listFiles(root: string): Promise<Map<string, string>> {
+export async function listFiles(
+  root: string,
+  preserveDirectories: ReadonlySet<string> = new Set(),
+): Promise<Map<string, string>> {
   const files = new Map<string, string>();
-  async function visit(directory: string): Promise<void> {
+  async function visit(directory: string, collect = true): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
       const path = join(directory, entry.name);
       if (entry.isSymbolicLink()) {
         throw new Error(`Refusing to use a generated directory containing a symlink: ${path}`);
       }
       if (entry.isDirectory()) {
-        await visit(path);
+        if (directory === root && preserveDirectories.has(entry.name)) {
+          // Validate the preserved tree too: never move a tree containing symlinks.
+          await visit(path, false);
+          continue;
+        }
+        await visit(path, collect);
       } else if (entry.isFile()) {
-        files.set(relative(root, path).split(sep).join("/"), await readFile(path, "utf8"));
+        if (directory === root && preserveDirectories.has(entry.name)) {
+          throw new Error(`Preserved path must be a directory: ${path}`);
+        }
+        if (collect) {
+          files.set(relative(root, path).split(sep).join("/"), await readFile(path, "utf8"));
+        }
       } else {
         throw new Error(`Unexpected file in generated directory: ${path}`);
       }
@@ -31,7 +44,10 @@ export function hasErrorCode(error: unknown, code: string): boolean {
   return error instanceof Error && "code" in error && error.code === code;
 }
 
-export async function outputFiles(output: string): Promise<Map<string, string>> {
+export async function outputFiles(
+  output: string,
+  preserveDirectories: ReadonlySet<string> = new Set(),
+): Promise<Map<string, string>> {
   let stats;
   try {
     stats = await lstat(output);
@@ -44,7 +60,7 @@ export async function outputFiles(output: string): Promise<Map<string, string>> 
   if (!stats.isDirectory() || stats.isSymbolicLink()) {
     throw new Error(`Output must be a regular directory: ${output}`);
   }
-  const files = await listFiles(output);
+  const files = await listFiles(output, preserveDirectories);
   for (const [name, source] of files) {
     if (
       extname(name) !== ".ts" ||

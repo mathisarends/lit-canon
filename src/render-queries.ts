@@ -59,7 +59,8 @@ function functionParameters(inputs: OperationInput[]): string {
     .join(", ");
 }
 
-function requestOptions(feature: FeatureOptions, signal: boolean): string {
+function requestOptions(feature: FeatureOptions, signal?: string): string {
+  const signalField = signal === "signal" ? "signal" : signal ? `signal: ${signal}` : null;
   const customOptions = feature.requestOptions;
   if (customOptions) {
     const source = ts.createSourceFile(
@@ -76,14 +77,32 @@ function requestOptions(feature: FeatureOptions, signal: boolean): string {
         ? statement.expression.expression
         : undefined;
     if (expression && ts.isObjectLiteralExpression(expression)) {
-      const fields = [
-        signal ? "signal" : null,
-        ...expression.properties.map((property) => property.getText(source)),
-      ];
+      const properties = expression.properties.filter((property) => {
+        if (!signal || !property.name) {
+          return true;
+        }
+        if (ts.isComputedPropertyName(property.name)) {
+          const expression = property.name.expression;
+          return !ts.isStringLiteralLike(expression) || expression.text !== "signal";
+        }
+        const name = property.name;
+        return !(ts.isIdentifier(name) || ts.isStringLiteralLike(name)) || name.text !== "signal";
+      });
+      const canOverrideSignal = properties.some(
+        (property) =>
+          ts.isSpreadAssignment(property) ||
+          (property.name &&
+            (ts.isComputedPropertyName(property.name) ||
+              property.name.getText(source).replace(/["']/g, "") === "signal")),
+      );
+      const fieldsSource = properties.map((property) => property.getText(source));
+      const fields = canOverrideSignal
+        ? [...fieldsSource, signalField]
+        : [signalField, ...fieldsSource];
       return `{ ${fields.filter(Boolean).join(", ")} }`;
     }
   }
-  const fields = [customOptions ? `...(${customOptions})` : null, signal ? "signal" : null];
+  const fields = [customOptions ? `...(${customOptions})` : null, signalField];
   return `{ ${fields.filter(Boolean).join(", ")} }`;
 }
 
@@ -131,12 +150,20 @@ function renderQuery(
     ),
     ...(feature.queryKey ?? []),
   ];
-  const call = [...inputs.map(({ name: inputName }) => inputName), requestOptions(feature, true)];
+  let signalName = "signal";
+  const importNames = feature.imports?.flatMap((entry) => entry.names) ?? [];
+  while (inputs.some((input) => input.name === signalName) || importNames.includes(signalName)) {
+    signalName = `_${signalName}`;
+  }
+  const call = [
+    ...inputs.map(({ name: inputName }) => inputName),
+    requestOptions(feature, signalName),
+  ];
 
   return `export const ${name}Query = (${functionParameters(inputs)}) =>
     queryOptions({
       queryKey: [${key.join(", ")}] as const,
-      queryFn: ({ signal }) => ${name}(${call.join(", ")}),
+      queryFn: ({ ${signalName === "signal" ? "signal" : `signal: ${signalName}`} }) => ${name}(${call.join(", ")}),
       ${feature.enabled ? `enabled: ${feature.enabled},` : ""}
     });`;
 }
@@ -155,7 +182,7 @@ function renderMutation(
         : `variables: [${inputs.map(({ type }) => type).join(", ")}]`;
   const call = [
     ...inputs.map((_, index) => (inputs.length === 1 ? "variables" : `variables[${index}]`)),
-    ...(feature.requestOptions ? [requestOptions(feature, false)] : []),
+    ...(feature.requestOptions ? [requestOptions(feature)] : []),
   ];
 
   return `export const ${name}Mutation = () =>
@@ -172,10 +199,14 @@ function renderAliases(
 ): string[] {
   return Object.entries(aliases).map(([alias, methods]) => {
     const members = Object.entries(methods).map(([method, operationName]) => {
+      if (method === "allKey" || method === "__proto__") {
+        throw new Error(`Reserved query alias member: ${alias}.${method}`);
+      }
       if (!queryNames.includes(operationName)) {
         throw new Error(`Query alias ${alias}.${method} has no generated operation`);
       }
-      return `${JSON.stringify(method)}: ${operationName}Query,`;
+      const property = /^[A-Za-z_$][\w$]*$/.test(method) ? method : JSON.stringify(method);
+      return `${property}: ${operationName}Query,`;
     });
     return `export const ${alias} = {
       allKey: [${JSON.stringify(tag)}] as const,
@@ -209,6 +240,24 @@ export function renderQueryFiles(
   }
   if (inputs.size !== operations.size) {
     throw new Error(`Unexpected generated operation for ${tag}`);
+  }
+
+  const bindings = new Set(operations.keys());
+  for (const name of [
+    ...queryNames.map((name) => `${name}Query`),
+    ...mutationNames.map((name) => `${name}Mutation`),
+    ...Object.keys(config.aliases ?? {}),
+  ]) {
+    if (bindings.has(name)) {
+      throw new Error(`Duplicate generated feature export: ${name}`);
+    }
+    bindings.add(name);
+  }
+  for (const name of feature.imports?.flatMap((entry) => entry.names) ?? []) {
+    if (bindings.has(name) || name === "queryOptions" || name === "mutationOptions") {
+      throw new Error(`Feature import conflicts with a generated binding: ${name}`);
+    }
+    bindings.add(name);
   }
 
   const queryFunctions = [

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { camelPathParamName, parseRoutePath } from "@orval/core";
 import type { Operation, Operations } from "./operation.js";
 
 function variableDeclaration(statement: ts.Statement): ts.VariableDeclaration {
@@ -46,18 +47,25 @@ function requestBody(
 }
 
 function urlExpression(path: string, parameterNames: Set<string>): string {
-  if (!path.includes("{")) {
+  const tokens = parseRoutePath(path);
+  if (!tokens.some((token) => token.kind === "param")) {
     return JSON.stringify(path);
   }
-  if (path.includes("`") || path.includes("${")) {
-    throw new Error(`Unsupported OpenAPI path: ${path}`);
-  }
-  const template = path.replace(/\{([^}]+)\}/g, (_, name) => {
-    if (!parameterNames.has(name)) {
-      throw new Error(`Missing path parameter ${name} in ${path}`);
-    }
-    return "${encodeURIComponent(" + name + ")}";
-  });
+  const template = tokens
+    .map((token) => {
+      if (token.kind === "literal") {
+        return JSON.stringify(token.value)
+          .slice(1, -1)
+          .replace(/`/g, "\\`")
+          .replace(/\$\{/g, "\\${");
+      }
+      const name = camelPathParamName(token.name);
+      if (!parameterNames.has(name)) {
+        throw new Error(`Missing path parameter ${token.name} in ${path}`);
+      }
+      return "${encodeURIComponent(" + name + ")}";
+    })
+    .join("");
   return "`" + template + "`";
 }
 
@@ -127,7 +135,7 @@ function renderOperation(
       .getText(sourceFile)
       .replace("Parameters<typeof apiFetch>[1]", "ApiRequestOptions");
     if (useRequestName && parameter.name.getText(sourceFile) === body) {
-      text = text.replace(new RegExp(`^${body}(?=[:?])`), "request");
+      text = `request${text.slice(body.length)}`;
     }
     return text;
   });

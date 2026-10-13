@@ -45,14 +45,15 @@
     "prepack": "npm run build"
   },
   "dependencies": {
+    "@orval/core": "8.38.0",
     "jiti": "2.6.1",
     "orval": "8.38.0",
     "prettier": "3.9.9",
     "typescript": "6.0.3"
   },
   "devDependencies": {
-    "@tanstack/lit-query": "0.2.25",
     "@scalar/openapi-types": "0.9.7",
+    "@tanstack/lit-query": "0.2.25",
     "@types/node": "^24.0.0"
   },
   "keywords": [

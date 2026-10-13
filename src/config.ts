@@ -30,6 +30,10 @@ export interface CodegenConfig {
     typeExports?: string[];
   };
   excludeTags?: string[];
+  /** Top-level output directories owned by another generator, e.g. ["rpc"]. */
+  preserveDirectories?: string[];
+  /** Defaults to features with problem responses. true also emits empty problem types. */
+  problems?: boolean;
   /** OpenAPI operation IDs (snake_case) or generated function names (camelCase). */
   mutationOperations?: string[];
   features?: Record<string, FeatureOptions>;

@@ -8,11 +8,14 @@ export interface ApiProblem {
   [key: string]: unknown;
 }
 
-export class ApiError extends Error {
+export class ApiError<
+  P extends Partial<Pick<ApiProblem, "type" | "title" | "status" | "detail" | "instance">> =
+    ApiProblem,
+> extends Error {
   readonly status: number;
-  readonly problem: ApiProblem | null;
+  readonly problem: P | null;
 
-  constructor(status: number, problem: ApiProblem | null) {
+  constructor(status: number, problem: P | null) {
     super(problem?.detail || problem?.title || `HTTP ${status}`);
     this.name = "ApiError";
     this.status = status;

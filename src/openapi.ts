@@ -2,8 +2,66 @@ import ts from "typescript";
 import type { OpenAPIV3 } from "@scalar/openapi-types";
 import type { CodegenConfig } from "./config.js";
 import type { Operation, Operations } from "./operation.js";
+import { resolveReference } from "./references.js";
+import { operationProblems } from "./render-problems.js";
 
 const methods = new Set(["get", "put", "post", "delete", "options", "head", "patch", "trace"]);
+
+function validateParameterSchema(
+  value: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject,
+  spec: OpenAPIV3.Document,
+  context: string,
+  allowArray: boolean,
+  seen = new Set<object>(),
+): void {
+  const schema = resolveReference(value, spec, "Schemas");
+  if (seen.has(schema)) {
+    return;
+  }
+  const visited = new Set(seen).add(schema);
+  const types: string[] = Array.isArray(schema.type) ? schema.type : [schema.type ?? ""];
+  if (types.includes("object") || schema.properties || (!allowArray && types.includes("array"))) {
+    throw new Error(`Unsupported object or array parameter in ${context}`);
+  }
+  if ("items" in schema && schema.items) {
+    validateParameterSchema(schema.items, spec, context, false, visited);
+  }
+  for (const variant of [
+    ...(schema.allOf ?? []),
+    ...(schema.oneOf ?? []),
+    ...(schema.anyOf ?? []),
+  ]) {
+    validateParameterSchema(variant, spec, context, allowArray, visited);
+  }
+}
+
+function validateParameter(
+  parameter: OpenAPIV3.ParameterObject,
+  spec: OpenAPIV3.Document,
+  context: string,
+): void {
+  if (parameter.in !== "path" && parameter.in !== "query") {
+    throw new Error(`Unsupported ${parameter.in} parameter ${parameter.name} in ${context}`);
+  }
+  const style = parameter.in === "query" ? "form" : "simple";
+  const explode = parameter.in === "query";
+  if (
+    parameter.content ||
+    (parameter.style && parameter.style !== style) ||
+    (parameter.explode !== undefined && parameter.explode !== explode) ||
+    parameter.allowReserved
+  ) {
+    throw new Error(`Unsupported serialization for parameter ${parameter.name} in ${context}`);
+  }
+  if (parameter.schema) {
+    validateParameterSchema(
+      parameter.schema,
+      spec,
+      `${context} (${parameter.name})`,
+      parameter.in === "query",
+    );
+  }
+}
 
 export function identifier(name: string, label: string): string {
   if (typeof name !== "string" || !/^[A-Za-z_$][\w$]*$/.test(name)) {
@@ -24,36 +82,6 @@ export function operationName(id: string | undefined): string {
   }
   const name = id.replace(/_([a-z0-9])/g, (_, character) => character.toUpperCase());
   return identifier(name, "operation name");
-}
-
-function resolveParameter(
-  parameter: OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject,
-  spec: OpenAPIV3.Document,
-  seen = new Set<string>(),
-): OpenAPIV3.ParameterObject {
-  if (!("$ref" in parameter)) {
-    return parameter;
-  }
-  const ref = parameter.$ref;
-  if (!ref.startsWith("#/") || seen.has(ref)) {
-    throw new Error(`Parameters require non-circular local references: ${ref}`);
-  }
-  seen.add(ref);
-  let value: unknown = spec;
-  for (const key of ref.slice(2).split("/")) {
-    if (value === null || typeof value !== "object") {
-      throw new Error(`Missing parameter reference: ${ref}`);
-    }
-    value = (value as Record<string, unknown>)[key.replace(/~1/g, "/").replace(/~0/g, "~")];
-  }
-  if (value === null || typeof value !== "object") {
-    throw new Error(`Missing parameter reference: ${ref}`);
-  }
-  return resolveParameter(
-    value as OpenAPIV3.ParameterObject | OpenAPIV3.ReferenceObject,
-    spec,
-    seen,
-  );
 }
 
 export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfig) {
@@ -83,17 +111,28 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
         continue;
       }
       const name = operationName(operation.operationId);
+      if (["apiFetch", "ApiRequestOptions", "queryOptions", "mutationOptions"].includes(name)) {
+        throw new Error(`Operation name conflicts with a generated import: ${name}`);
+      }
       if (names.has(name)) {
         throw new Error(`Duplicate generated operation name: ${name}`);
       }
       names.add(name);
+      const parameters = new Map(
+        [...(pathItem.parameters ?? []), ...(operation.parameters ?? [])].map((value) => {
+          const parameter = resolveReference(value, spec, "Parameters");
+          return [`${parameter.in}:${parameter.name}`, parameter] as const;
+        }),
+      );
+      for (const parameter of parameters.values()) {
+        validateParameter(parameter, spec, `${method.toUpperCase()} ${path}`);
+      }
       const operations = operationsByTag.get(tag) ?? new Map<string, Operation>();
       operations.set(name, {
         path,
         method,
-        hasQuery: [...(pathItem.parameters ?? []), ...(operation.parameters ?? [])].some(
-          (parameter) => resolveParameter(parameter, spec).in === "query",
-        ),
+        hasQuery: [...parameters.values()].some((parameter) => parameter.in === "query"),
+        problems: config.problems === false ? [] : operationProblems(operation, spec),
       });
       operationsByTag.set(tag, operations);
     }

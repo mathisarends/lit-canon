@@ -262,6 +262,12 @@ generated directory: files without a generator header and symbolic links prevent
 replacement. Features and query or mutation files that are no longer needed are
 removed during the next generation run.
 
+If another generator shares the output directory, explicitly preserve its top-level
+directories with `preserveDirectories: ["rpc"]`. These trees are excluded from
+drift checks and moved intact when replacing the REST client, including binary files
+and empty directories. They cannot overlap generated features or contain symbolic
+links. Unlisted files still need a generator header.
+
 ## Fetch runtime
 
 Generated clients use `lit-query-codegen/runtime` by default. This module has no
@@ -315,6 +321,31 @@ and fetch options. Feature entry points also export `ApiError`, `ApiProblem` and
 - `features`: add imports, request options, query-key values and an `enabled`
   expression for each feature. Expressions are TypeScript code from your config.
 - `queryAliases`: group related queries under an object with an `allKey` property.
+- `problems`: emit operation and feature problem types from
+  `application/problem+json` responses. By default, only features with problem
+  responses get a `problems.ts` file. Set `true` to also generate `never` problem
+  types for features without them, or `false` to omit the helpers.
+- `preserveDirectories`: retain top-level output directories owned by another
+  generator, such as an RPC client.
+
+Problem helpers support named local schema references, `oneOf` and `anyOf`,
+including locally referenced responses. They export types such as
+`GetProductProblem`, `ProductsProblem`, `ProductsProblemCode` and `isProductsError`.
+Code types also work when some problem schemas omit `code`. Inline problem schemas
+require `problems: false` or extraction into `components.schemas`. A custom request
+module must export a generic `ApiError<P>` when these helpers are enabled.
+The error helper identifies `ApiError` instances for use at that feature's call
+sites; it does not validate payloads or distinguish errors from other features.
+
+[`examples/maximus-trading.config.ts`](examples/maximus-trading.config.ts) shows the
+established Maximus setup: admin headers and cache scope, OAuth GET mutations,
+query aliases, problem types and a preserved RPC client. To verify it against an
+existing checkout without writing to it:
+
+```bash
+npm run build
+node test/maximus-parity.ts /path/to/maximus-trading/frontend
+```
 
 [examples/advanced.config.ts](examples/advanced.config.ts) shows these options for
 a product catalog with session-dependent requests and login operations. Adapt the
@@ -345,9 +376,18 @@ Each included operation must have exactly one tag in the format
 `camelCase`. Local parameter references are supported. Bundle path-item references
 before generation.
 
-The transformation targets JSON and multipart fetch requests. Custom header or
-cookie parameters and other OpenAPI serialization styles require corresponding
-extensions to the mutator and transformation.
+The transformation targets JSON and multipart fetch requests, scalar path parameters
+with `simple` serialization and query parameters with `form`/`explode: true`
+serialization. Path identifiers such as `item_id`, `scope.id` and `class` use
+Orval's TypeScript naming rules. Header and cookie parameters, object parameters
+and other serialization styles are rejected rather than silently producing a
+different request. Authentication headers can be supplied through feature
+`requestOptions`.
+
+Query factories always forward TanStack's `AbortSignal`, including when feature
+request options contain their own signal. Generated export and alias collisions
+fail before the existing client is replaced; alias members `allKey` and `__proto__`
+are reserved.
 
 Generated TypeScript types describe the API contract; the runtime does not validate
 response bodies against the schema.
