@@ -1,0 +1,28 @@
+{
+  "name": "lit-canon-api-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:package": "pnpm --filter lit-canon-api test:package",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json",
+    "example:generate": "pnpm -r build && node packages/api/dist/cli.js generate --config examples/catalog/lit-canon-api.config.ts",
+    "example:check": "pnpm -r build && node packages/api/dist/cli.js check --config examples/catalog/lit-canon-api.config.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@tanstack/lit-query": "0.2.25",
+    "@types/node": "^24.0.0",
+    "lit": "^3.3.3",
+    "lit-canon-fetch": "workspace:*",
+    "lit-canon-api": "workspace:*",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3"
+  }
+}

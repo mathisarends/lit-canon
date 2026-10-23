@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["examples/**/*.ts"]
+}

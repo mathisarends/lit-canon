@@ -1,5 +1,7 @@
 node_modules/
 dist/
+*.tgz
+.test-output/
+.vitest/
 .vitest-attachments/
 __screenshots__/
-.vitest/

@@ -1,0 +1,107 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Product catalog example",
+    "version": "1.0.0"
+  },
+  "tags": [{ "name": "products", "description": "Browse and maintain the product catalog" }],
+  "paths": {
+    "/products": {
+      "get": {
+        "tags": ["products"],
+        "operationId": "list_products",
+        "summary": "List products",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Products in the catalog",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["products"],
+        "operationId": "create_product",
+        "summary": "Create a product",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProductInput" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created product",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          }
+        }
+      }
+    },
+    "/products/{productId}": {
+      "parameters": [
+        { "name": "productId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "tags": ["products"],
+        "operationId": "get_product",
+        "summary": "Get a product",
+        "responses": {
+          "200": {
+            "description": "Requested product",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["products"],
+        "operationId": "update_product",
+        "summary": "Replace a product's name and price",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProductInput" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated product",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/Product" } }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "required": ["id", "name", "price"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "price": { "type": "number", "minimum": 0 }
+        }
+      },
+      "ProductInput": {
+        "type": "object",
+        "required": ["name", "price"],
+        "properties": {
+          "name": { "type": "string" },
+          "price": { "type": "number", "minimum": 0 }
+        }
+      }
+    }
+  }
+}
