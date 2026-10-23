@@ -1,4 +1,4 @@
-import { defineConfig } from "lit-query-codegen";
+import { defineConfig } from "lit-canon-api";
 
 export default defineConfig({
   input: "./openapi.json",

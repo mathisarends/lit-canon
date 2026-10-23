@@ -1,21 +1,5 @@
 import type { Options as PrettierOptions } from "prettier";
 
-export interface FeatureImport {
-  /** File path relative to the config, or a bare module specifier. */
-  from: string;
-  names: string[];
-}
-
-export interface FeatureOptions {
-  imports?: FeatureImport[];
-  /** TypeScript expression returning ApiRequestOptions, e.g. "{ headers: authHeaders() }". */
-  requestOptions?: string;
-  /** Additional TypeScript expressions appended to each query key. */
-  queryKey?: string[];
-  /** TypeScript expression for the generated query's enabled option. */
-  enabled?: string;
-}
-
 export interface CodegenConfig {
   /** Local OpenAPI 3 JSON file, relative to the configuration file. */
   input: string;
@@ -23,7 +7,7 @@ export interface CodegenConfig {
   output: string;
   /** Defaults to the directory containing the config. */
   workspace?: string;
-  /** Defaults to lit-query-codegen/runtime. Custom files export apiFetch and ApiRequestOptions. */
+  /** Defaults to lit-canon-fetch. Custom files export apiFetch and ApiRequestOptions. */
   request?: {
     path: string;
     exports?: string[];
@@ -32,12 +16,10 @@ export interface CodegenConfig {
   excludeTags?: string[];
   /** Top-level output directories owned by another generator, e.g. ["rpc"]. */
   preserveDirectories?: string[];
-  /** Defaults to features with problem responses. true also emits empty problem types. */
+  /** Defaults to resources with problem responses. true also emits empty problem types. */
   problems?: boolean;
   /** OpenAPI operation IDs (snake_case) or generated function names (camelCase). */
   mutationOperations?: string[];
-  features?: Record<string, FeatureOptions>;
-  queryAliases?: Record<string, Record<string, Record<string, string>>>;
   /** Overrides the detected project Prettier configuration. */
   prettier?: PrettierOptions;
 }
@@ -51,6 +33,20 @@ export interface GenerateOptions {
 
 export interface GenerateResult {
   output: string;
+  /** OpenAPI tags, one generated resource directory each. */
   tags: string[];
   files: string[];
+}
+
+const removedOptions = ["features", "queryAliases"] as const;
+
+export function validateConfig(config: CodegenConfig): void {
+  if (!config || typeof config.input !== "string" || typeof config.output !== "string") {
+    throw new Error("Configuration requires input and output paths");
+  }
+  for (const option of removedOptions) {
+    if (Object.hasOwn(config, option)) {
+      throw new Error(`"${option}" was removed in lit-canon-api 1.0. See docs/migration.md.`);
+    }
+  }
 }

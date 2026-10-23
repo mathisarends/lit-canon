@@ -105,7 +105,7 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       }
       const [tag] = operation.tags;
       if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
-        throw new Error(`OpenAPI tag cannot be used as a feature directory: ${tag}`);
+        throw new Error(`OpenAPI tag cannot be used as a resource directory: ${tag}`);
       }
       if (excluded.has(tag)) {
         continue;
@@ -141,14 +141,6 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
   for (const name of mutationOperations) {
     if (!names.has(name)) {
       throw new Error(`Configured mutation has no included operation: ${name}`);
-    }
-  }
-  for (const tag of new Set([
-    ...Object.keys(config.features ?? {}),
-    ...Object.keys(config.queryAliases ?? {}),
-  ])) {
-    if (!operationsByTag.has(tag)) {
-      throw new Error(`Configured feature has no included operations: ${tag}`);
     }
   }
   return { operationsByTag, mutationOperations };

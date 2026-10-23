@@ -11,8 +11,8 @@
     "test": "pnpm -r test",
     "test:package": "pnpm --filter lit-canon-api test:package",
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json",
-    "example:generate": "pnpm -r build && node packages/api/dist/cli.js --config examples/catalog/lit-canon-api.config.ts",
-    "example:check": "pnpm -r build && node packages/api/dist/cli.js --config examples/catalog/lit-canon-api.config.ts --check",
+    "example:generate": "pnpm -r build && node packages/api/dist/cli.js generate --config examples/catalog/lit-canon-api.config.ts",
+    "example:check": "pnpm -r build && node packages/api/dist/cli.js check --config examples/catalog/lit-canon-api.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

@@ -1,5 +1,4 @@
 import ts from "typescript";
-import type { FeatureOptions } from "./config.js";
 import type { Operations } from "./operation.js";
 
 interface OperationInput {
@@ -9,10 +8,9 @@ interface OperationInput {
 }
 
 interface RenderQueryOptions {
-  feature?: FeatureOptions;
-  imports?: string[];
+  /** camelCase resource name, e.g. "userSettings" for the tag "user-settings". */
+  namespace: string;
   mutationOperations?: string[];
-  aliases?: Record<string, Record<string, string>>;
 }
 
 function operationInputs(source: string): Map<string, OperationInput[]> {
@@ -59,160 +57,70 @@ function functionParameters(inputs: OperationInput[]): string {
     .join(", ");
 }
 
-function requestOptions(feature: FeatureOptions, signal?: string): string {
-  const signalField = signal === "signal" ? "signal" : signal ? `signal: ${signal}` : null;
-  const customOptions = feature.requestOptions;
-  if (customOptions) {
-    const source = ts.createSourceFile(
-      "options.ts",
-      `(${customOptions})`,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    const statement = source.statements[0];
-    const expression =
-      statement &&
-      ts.isExpressionStatement(statement) &&
-      ts.isParenthesizedExpression(statement.expression)
-        ? statement.expression.expression
-        : undefined;
-    if (expression && ts.isObjectLiteralExpression(expression)) {
-      const properties = expression.properties.filter((property) => {
-        if (!signal || !property.name) {
-          return true;
-        }
-        if (ts.isComputedPropertyName(property.name)) {
-          const expression = property.name.expression;
-          return !ts.isStringLiteralLike(expression) || expression.text !== "signal";
-        }
-        const name = property.name;
-        return !(ts.isIdentifier(name) || ts.isStringLiteralLike(name)) || name.text !== "signal";
-      });
-      const canOverrideSignal = properties.some(
-        (property) =>
-          ts.isSpreadAssignment(property) ||
-          (property.name &&
-            (ts.isComputedPropertyName(property.name) ||
-              property.name.getText(source).replace(/["']/g, "") === "signal")),
-      );
-      const fieldsSource = properties.map((property) => property.getText(source));
-      const fields = canOverrideSignal
-        ? [...fieldsSource, signalField]
-        : [signalField, ...fieldsSource];
-      return `{ ${fields.filter(Boolean).join(", ")} }`;
-    }
-  }
-  const fields = [customOptions ? `...(${customOptions})` : null, signalField];
-  return `{ ${fields.filter(Boolean).join(", ")} }`;
-}
-
-function usedImports(imports: string[], source: string): string[] {
-  const sourceFile = ts.createSourceFile("queries.ts", source, ts.ScriptTarget.Latest, true);
-  const used = new Set<string>();
-  function visit(node: ts.Node): void {
-    if (ts.isIdentifier(node)) {
-      used.add(node.text);
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(sourceFile);
-  return imports.flatMap((source) => {
-    const file = ts.createSourceFile("imports.ts", source, ts.ScriptTarget.Latest, true);
-    const declaration = file.statements[0];
-    if (
-      !declaration ||
-      !ts.isImportDeclaration(declaration) ||
-      !declaration.importClause?.namedBindings ||
-      !ts.isNamedImports(declaration.importClause.namedBindings)
-    ) {
-      throw new Error(`Expected a named feature import: ${source}`);
-    }
-    const names = declaration.importClause.namedBindings.elements
-      .map((element) => element.name.text)
-      .filter((name) => used.has(name));
-    return names.length
-      ? [`import { ${names.join(", ")} } from ${declaration.moduleSpecifier.getText(file)};`]
-      : [];
-  });
-}
-
-function renderQuery(
+function renderKeys(
+  keysName: string,
   tag: string,
-  name: string,
-  inputs: OperationInput[],
-  feature: FeatureOptions,
+  queryNames: string[],
+  inputs: Map<string, OperationInput[]>,
 ): string {
-  const key = [
-    JSON.stringify(tag),
-    JSON.stringify(name),
-    ...inputs.map(({ name: inputName, optional }) =>
-      optional ? `${inputName} ?? null` : inputName,
-    ),
-    ...(feature.queryKey ?? []),
-  ];
+  const members = queryNames.map((name) => {
+    const operationInputs = inputs.get(name)!;
+    const key = [
+      JSON.stringify(tag),
+      JSON.stringify(name),
+      ...operationInputs.map(({ name: inputName, optional }) =>
+        optional ? `${inputName} ?? null` : inputName,
+      ),
+    ];
+    return `${name}: (${functionParameters(operationInputs)}) => [${key.join(", ")}] as const,`;
+  });
+  return `export const ${keysName} = {
+    all: [${JSON.stringify(tag)}] as const,
+    ${members.join("\n")}
+  };`;
+}
+
+function renderQuery(keysName: string, name: string, inputs: OperationInput[]): string {
+  // A path or query input may itself be called "signal"; keep TanStack's signal distinct.
   let signalName = "signal";
-  const importNames = feature.imports?.flatMap((entry) => entry.names) ?? [];
-  while (inputs.some((input) => input.name === signalName) || importNames.includes(signalName)) {
+  while (inputs.some((input) => input.name === signalName)) {
     signalName = `_${signalName}`;
   }
-  const call = [
-    ...inputs.map(({ name: inputName }) => inputName),
-    requestOptions(feature, signalName),
-  ];
+  const names = inputs.map(({ name: inputName }) => inputName);
+  const signal = signalName === "signal" ? "signal" : `signal: ${signalName}`;
 
   return `export const ${name}Query = (${functionParameters(inputs)}) =>
     queryOptions({
-      queryKey: [${key.join(", ")}] as const,
-      queryFn: ({ ${signalName === "signal" ? "signal" : `signal: ${signalName}`} }) => ${name}(${call.join(", ")}),
-      ${feature.enabled ? `enabled: ${feature.enabled},` : ""}
+      queryKey: ${keysName}.${name}(${names.join(", ")}),
+      queryFn: ({ ${signal} }) => ${name}(${[...names, `{ ${signal} }`].join(", ")}),
     });`;
 }
 
-function renderMutation(
-  tag: string,
-  name: string,
-  inputs: OperationInput[],
-  feature: FeatureOptions,
-): string {
-  const variables =
-    inputs.length === 0
-      ? ""
-      : inputs.length === 1
-        ? `variables: ${inputs[0].type}`
-        : `variables: [${inputs.map(({ type }) => type).join(", ")}]`;
-  const call = [
-    ...inputs.map((_, index) => (inputs.length === 1 ? "variables" : `variables[${index}]`)),
-    ...(feature.requestOptions ? [requestOptions(feature)] : []),
-  ];
-
+function renderMutation(tag: string, name: string, inputs: OperationInput[]): string {
+  const key = `mutationKey: [${JSON.stringify(tag)}, ${JSON.stringify(name)}] as const,`;
+  if (!inputs.length) {
+    return `export const ${name}Mutation = () =>
+      mutationOptions({
+        ${key}
+        mutationFn: () => ${name}(),
+      });`;
+  }
+  const seen = new Set<string>();
+  for (const { name: inputName } of inputs) {
+    if (seen.has(inputName) || inputName === "__proto__") {
+      throw new Error(`Mutation variable name collision in ${name}: ${inputName}`);
+    }
+    seen.add(inputName);
+  }
+  const properties = inputs.map(
+    ({ name: inputName, optional, type }) => `${inputName}${optional ? "?" : ""}: ${type};`,
+  );
+  const call = inputs.map(({ name: inputName }) => `variables.${inputName}`);
   return `export const ${name}Mutation = () =>
     mutationOptions({
-      mutationKey: [${JSON.stringify(tag)}, ${JSON.stringify(name)}] as const,
-      mutationFn: (${variables}) => ${name}(${call.join(", ")}),
+      ${key}
+      mutationFn: (variables: { ${properties.join(" ")} }) => ${name}(${call.join(", ")}),
     });`;
-}
-
-function renderAliases(
-  tag: string,
-  queryNames: string[],
-  aliases: Record<string, Record<string, string>>,
-): string[] {
-  return Object.entries(aliases).map(([alias, methods]) => {
-    const members = Object.entries(methods).map(([method, operationName]) => {
-      if (method === "allKey" || method === "__proto__") {
-        throw new Error(`Reserved query alias member: ${alias}.${method}`);
-      }
-      if (!queryNames.includes(operationName)) {
-        throw new Error(`Query alias ${alias}.${method} has no generated operation`);
-      }
-      const property = /^[A-Za-z_$][\w$]*$/.test(method) ? method : JSON.stringify(method);
-      return `${property}: ${operationName}Query,`;
-    });
-    return `export const ${alias} = {
-      allKey: [${JSON.stringify(tag)}] as const,
-      ${members.join("\n")}
-    };`;
-  });
 }
 
 export function renderQueryFiles(
@@ -220,10 +128,10 @@ export function renderQueryFiles(
   operations: Operations,
   apiSource: string,
   header: string,
-  config: RenderQueryOptions = {},
+  config: RenderQueryOptions,
 ): { queries: string | null; mutations: string | null } {
-  const feature = config.feature ?? {};
   const mutationOperations = new Set(config.mutationOperations ?? []);
+  const keysName = `${config.namespace}Keys`;
   const inputs = operationInputs(apiSource);
   const queryNames: string[] = [];
   const mutationNames: string[] = [];
@@ -241,39 +149,29 @@ export function renderQueryFiles(
   if (inputs.size !== operations.size) {
     throw new Error(`Unexpected generated operation for ${tag}`);
   }
+  if (queryNames.includes("all")) {
+    throw new Error(`Query operation "all" conflicts with ${keysName}.all`);
+  }
 
   const bindings = new Set(operations.keys());
   for (const name of [
+    ...(queryNames.length ? [keysName] : []),
     ...queryNames.map((name) => `${name}Query`),
     ...mutationNames.map((name) => `${name}Mutation`),
-    ...Object.keys(config.aliases ?? {}),
   ]) {
     if (bindings.has(name)) {
-      throw new Error(`Duplicate generated feature export: ${name}`);
-    }
-    bindings.add(name);
-  }
-  for (const name of feature.imports?.flatMap((entry) => entry.names) ?? []) {
-    if (bindings.has(name) || name === "queryOptions" || name === "mutationOptions") {
-      throw new Error(`Feature import conflicts with a generated binding: ${name}`);
+      throw new Error(`Duplicate generated resource export: ${name}`);
     }
     bindings.add(name);
   }
 
-  const queryFunctions = [
-    ...queryNames.map((name) => renderQuery(tag, name, inputs.get(name)!, feature)),
-    ...renderAliases(tag, queryNames, config.aliases ?? {}),
-  ];
-  const mutationFunctions = mutationNames.map((name) =>
-    renderMutation(tag, name, inputs.get(name)!, feature),
-  );
   const queries = queryNames.length
     ? [
         header,
         'import { queryOptions } from "@tanstack/lit-query";',
-        ...usedImports(config.imports ?? [], queryFunctions.join("\n")),
         `import { ${queryNames.join(", ")} } from "./api";`,
-        ...queryFunctions,
+        renderKeys(keysName, tag, queryNames, inputs),
+        ...queryNames.map((name) => renderQuery(keysName, name, inputs.get(name)!)),
         "",
       ].join("\n\n")
     : null;
@@ -282,9 +180,8 @@ export function renderQueryFiles(
     ? [
         header,
         'import { mutationOptions } from "@tanstack/lit-query";',
-        ...usedImports(config.imports ?? [], mutationFunctions.join("\n")),
         `import { ${mutationNames.join(", ")} } from "./api";`,
-        ...mutationFunctions,
+        ...mutationNames.map((name) => renderMutation(tag, name, inputs.get(name)!)),
         "",
       ].join("\n\n")
     : null;

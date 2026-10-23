@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-/** A feature barrel must not export the same name from different modules. */
+/** A resource barrel must not export the same name from different modules. */
 export function validateExports(sources: Record<string, string>): void {
   const owners = new Map<string, string>();
   for (const [file, source] of Object.entries(sources)) {
@@ -33,7 +33,7 @@ export function validateExports(sources: Record<string, string>): void {
       for (const name of names) {
         const previous = owners.get(name);
         if (previous && previous !== file) {
-          throw new Error(`Duplicate generated feature export: ${name} (${previous} and ${file})`);
+          throw new Error(`Duplicate generated resource export: ${name} (${previous} and ${file})`);
         }
         owners.set(name, file);
       }

@@ -98,7 +98,7 @@ export function renderProblems(
     new Set(declarations).size !== declarations.length ||
     declarations.some((name) => schemas.includes(name) || operations.has(name))
   ) {
-    throw new Error(`Problem type conflicts with a generated feature export: ${tag}`);
+    throw new Error(`Problem type conflicts with a generated resource export: ${tag}`);
   }
   const codeType = problems.every((problem) => problem.hasCode)
     ? `${prefix}Problem["code"]`
