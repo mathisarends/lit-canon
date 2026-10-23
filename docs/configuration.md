@@ -1,30 +1,32 @@
 # Configuration and CLI
 
-Start with `input` and `output`, then add only the rules your application needs.
-The public configuration types are defined in [src/config.ts](../src/config.ts).
+Start with `input` and `output`, then add only the options your application needs.
+The configuration types are defined in
+[packages/api/src/config.ts](../packages/api/src/config.ts).
 
 ## Configuration options
 
-| Option                | Purpose / default                                                         |
-| --------------------- | ------------------------------------------------------------------------- |
-| `input`               | Required local OpenAPI 3 JSON file.                                       |
-| `output`              | Required directory owned by the generator.                                |
-| `workspace`           | Workspace passed to Orval; defaults to the config directory.              |
-| `request`             | Custom fetch mutator and its re-exports; defaults to the bundled runtime. |
-| `excludeTags`         | Tags to leave out.                                                        |
-| `preserveDirectories` | Top-level output directories owned by another generator.                  |
-| `problems`            | By default, emit helpers for features with problem responses.             |
-| `mutationOperations`  | Operation IDs or function names to treat as mutations.                    |
-| `features`            | Imports, request options, cache scope and query enablement per tag.       |
-| `queryAliases`        | Named groups of query factories per tag.                                  |
-| `prettier`            | Overrides for the detected project Prettier configuration.                |
+| Option                | Purpose / default                                                        |
+| --------------------- | ------------------------------------------------------------------------ |
+| `input`               | Required local OpenAPI 3 JSON file.                                      |
+| `output`              | Required directory owned by the generator.                               |
+| `workspace`           | Workspace passed to Orval; defaults to the config directory.             |
+| `request`             | Custom request module and its re-exports; defaults to `lit-canon-fetch`. |
+| `excludeTags`         | Tags to leave out.                                                       |
+| `mutationOperations`  | Operation IDs or function names to treat as mutations.                   |
+| `problems`            | By default, emit problem types for resources with problem responses.     |
+| `preserveDirectories` | Top-level output directories owned by another generator.                 |
+| `prettier`            | Overrides for the detected project Prettier configuration.               |
+
+The options `features` and `queryAliases` were removed in 1.0. A config that still
+sets them fails with an error pointing to the [migration guide](migration.md).
 
 ## Run the generator
 
-Create `lit-query-codegen.config.ts` in your application:
+Create `lit-canon-api.config.ts` in your application:
 
 ```ts
-import { defineConfig } from "lit-query-codegen";
+import { defineConfig } from "lit-canon-api";
 
 export default defineConfig({
   input: "./openapi.json",
@@ -32,138 +34,76 @@ export default defineConfig({
 });
 ```
 
-All file paths are resolved relative to the configuration file. Formatting follows
-your project's Prettier configuration. Override individual options with, for
-example, `prettier: { printWidth: 100 }`.
-
-Add generation and drift-check commands to your `package.json`:
-
-```json
-{
-  "scripts": {
-    "api:generate": "lit-query-codegen",
-    "api:check": "lit-query-codegen --check"
-  }
-}
-```
+All paths are resolved relative to the config file. The CLI has two commands:
 
 ```bash
-npm run api:generate
-npm run api:check
-npx lit-query-codegen --config other.config.ts
+lit-canon-api generate                          # write the client
+lit-canon-api check                             # compare without writing
+lit-canon-api generate --config api.config.ts   # use another config file
+lit-canon-api --help
 ```
 
-`--check` generates a temporary client and reports missing, changed or obsolete
-files with exit code 1. It leaves the existing client untouched.
+| Command    | Effect                                                                                | Exit code                             |
+| ---------- | ------------------------------------------------------------------------------------- | ------------------------------------- |
+| `generate` | Generates in a temporary directory, then replaces the output directory.               | 1 on any error                        |
+| `check`    | Generates in a temporary directory and compares it with the output. Changes no files. | 1 for missing, changed or extra files |
 
-Normal generation also uses a temporary directory. The output directory is
-replaced only after generation and transformation succeed. Use a dedicated
-generated directory: files without a generator header and symbolic links prevent
-replacement. Features and query or mutation files that are no longer needed are
-removed during the next generation run.
+Without a command, or with an unknown one, the CLI prints its usage and exits with
+code 1. `-c` is short for `--config`; the default is `lit-canon-api.config.ts` in
+the current directory.
 
-If another generator shares the output directory, explicitly preserve its top-level
+The output directory is replaced only after generation and transformation succeed.
+Use a dedicated generated directory: files without a generator header and symbolic
+links prevent replacement. Resources and query or mutation files that are no longer
+needed are removed during the next run.
+
+If another generator shares the output directory, preserve its top-level
 directories with `preserveDirectories: ["rpc"]`. These trees are excluded from
-drift checks and moved intact when replacing the REST client, including binary files
-and empty directories. They cannot overlap generated features or contain symbolic
-links. Unlisted files still need a generator header.
+`check` and moved intact during `generate`, including binary files and empty
+directories. They cannot overlap generated resources or contain symbolic links.
+Unlisted files still need a generator header.
 
-## Project-specific rules
+## Project-specific options
 
 - `excludeTags`: omit tags such as `system`.
 - `mutationOperations`: treat GET operations as mutations, for example an OAuth
   start or callback. Accepts OpenAPI operation IDs or generated function names.
-- `features`: add imports, request options, query-key values and an `enabled`
-  expression for each feature. Expressions are TypeScript code from your config.
-- `queryAliases`: group related queries under an object with an `allKey` property.
-- `problems`: emit operation and feature problem types from
-  `application/problem+json` responses. By default, only features with problem
+- `problems`: emit operation and resource problem types from
+  `application/problem+json` responses. By default, only resources with problem
   responses get a `problems.ts` file. Set `true` to also generate `never` problem
-  types for features without them, or `false` to omit the helpers.
-- `preserveDirectories`: retain top-level output directories owned by another
+  types for resources without them, or `false` to omit the helpers.
+- `preserveDirectories`: keep top-level output directories owned by another
   generator, such as an RPC client.
 
 Problem helpers support named local schema references, `oneOf` and `anyOf`,
-including locally referenced responses. They export types such as
-`GetProductProblem`, `ProductsProblem`, `ProductsProblemCode` and `isProductsError`.
-Code types also work when some problem schemas omit `code`. Inline problem schemas
-require `problems: false` or extraction into `components.schemas`. A custom request
-module must export a generic `ApiError<P>` when these helpers are enabled.
-The error helper identifies `ApiError` instances for use at that feature's call
-sites; it does not validate payloads or distinguish errors from other features.
+including locally referenced responses. For the `products` tag they export types
+such as `GetProductProblem`, `ProductsProblem` and `ProductsProblemCode`, and the
+guard `isProductsError`. Code types also work when some problem schemas omit
+`code`. Inline problem schemas require `problems: false` or extraction into
+`components.schemas`. A custom request module must export a generic `ApiError<P>`
+when these helpers are enabled. The guard identifies `ApiError` instances; it does
+not validate payloads or tell errors of different resources apart.
 
-[`examples/maximus-trading.config.ts`](../examples/maximus-trading.config.ts) shows the
-established Maximus setup: admin headers and cache scope, OAuth GET mutations,
-query aliases, problem types and a preserved RPC client. To verify it against an
-existing checkout without writing to it:
+[examples/advanced.config.ts](../examples/advanced.config.ts) shows these options
+together.
 
-```bash
-npm run build
-node test/maximus-parity.ts /path/to/maximus-trading/frontend
-```
+## Headers, enablement and cache scope
 
-[examples/advanced.config.ts](../examples/advanced.config.ts) shows these options for
-a product catalog with session-dependent requests and login operations. Adapt the
-tags, operation IDs and helper imports to your API. The example expects a
-`products` tag with `list_products` and `get_product` operations, plus
-`start_login` and `complete_login` operations. Its `auth.ts` module supplies
-`authHeaders`, `authScope` and `hasSession`.
+The config describes how to generate code, not how the application behaves at
+runtime. Decisions that depend on the session or the page are made in code:
 
-Once configured, `"api:generate": "lit-query-codegen"` replaces separate Orval
-configuration and transformation scripts. Exporting the OpenAPI specification
-and checking it against the backend remain tasks for your project.
-
-## Feature rules and query aliases
-
-The following configuration assumes the `products` tag has `list_products` and
-`get_product` operations, and your application supplies the imported auth helpers:
-
-```ts
-import { defineConfig } from "lit-query-codegen";
-
-export default defineConfig({
-  input: "./openapi.json",
-  output: "./src/api/generated",
-  features: {
-    products: {
-      imports: [
-        {
-          from: "./src/api/auth.ts",
-          names: ["authHeaders", "authScope", "hasSession"],
-        },
-      ],
-      requestOptions: "{ headers: authHeaders() }",
-      queryKey: ["authScope()"],
-      enabled: "hasSession()",
-    },
-  },
-  queryAliases: {
-    products: {
-      productQueries: {
-        list: "list_products",
-        detail: "get_product",
-      },
-    },
-  },
-});
-```
-
-The expression strings are inserted as TypeScript into the generated options.
-Imports may be relative files
-or bare module specifiers. Request options apply to query and mutation factories;
-`queryKey` and `enabled` apply to queries. Direct API calls accept request options
-as their final argument.
-
-This creates `products.productQueries.list(...)`,
-`products.productQueries.detail(...)` and `products.productQueries.allKey`.
-The `allKey` value is `["products"]`, so it can invalidate all queries in that
-feature. Alias members must refer to generated queries; `allKey` and `__proto__`
-are reserved.
+| Need                                    | Where                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| Auth or other headers for every request | A headers function in [`configureApiFetch`](runtime.md#dynamic-headers). |
+| Headers for one direct call             | The last argument: `products.getProduct("p-1", { headers })`.            |
+| Run a query only when ready             | `enabled` at the call site, spread next to the generated options.        |
+| Invalidate a whole resource             | `<resource>Keys.all`, for example `products.productsKeys.all`.           |
+| Separate cached data per user           | Clear the query cache when the session changes.                          |
 
 ## Programmatic API
 
 ```ts
-import { generate } from "lit-query-codegen";
+import { generate } from "lit-canon-api";
 
 await generate(
   { input: "openapi.json", output: "src/api/generated" },
@@ -172,9 +112,10 @@ await generate(
 ```
 
 For programmatic calls, paths resolve against `options.cwd`, which defaults to
-`process.cwd()`. The CLI supplies the directory containing the config file.
-`generate()` returns the absolute output path, feature tags and generated file names.
+`process.cwd()`. The CLI passes the directory containing the config file.
+`generate()` returns the absolute output path, the resource tags and the generated
+file names.
 
-For custom request modules, see the [runtime guide](runtime.md).
+For custom request modules, see the [runtime guide](runtime.md#custom-request-module).
 
 [All documentation](README.md)

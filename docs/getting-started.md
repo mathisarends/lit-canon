@@ -5,36 +5,37 @@ For a working reference, open the [catalog example](../examples/catalog/README.m
 
 ## Installation
 
-Requires **Node.js 22.18.0 or later**. Orval, TypeScript and Prettier are included
-as package dependencies. Your application also needs `@tanstack/lit-query` and its
-runtime dependencies. The example is checked against `@tanstack/lit-query@0.2.25`.
-Generated imports target a TypeScript frontend build with bundler module resolution,
-such as a Lit app built with Vite.
-
-To install a local package before it is published to a registry:
+Requires **Node.js 22.18.0 or later**. Generated code targets a TypeScript frontend
+with bundler module resolution, such as a Lit app built with Vite.
 
 ```bash
-# In the package directory
-npm ci
-npm pack
-
-# In your application; adjust the path to the generated tarball
-npm install /path/to/lit-query-codegen-0.1.0.tgz
-npm install @tanstack/lit-query@0.2.25 @tanstack/query-core@5.104.0 lit
+pnpm add lit-canon-fetch @tanstack/lit-query lit
+pnpm add -D lit-canon-api
 ```
 
-For local development, run `npm ci` and `npm run build` in the package directory,
-then install it in your application with `npm install /path/to/lit-query-codegen`.
-The default client imports `lit-query-codegen/runtime`, so keep the package as an
-application dependency. If you use your own fetch mutator, the generator can be
-installed with `--save-dev`.
+- `lit-canon-fetch` is the browser runtime imported by the generated code. It has no
+  dependencies.
+- `lit-canon-api` is the generator. It brings Orval, TypeScript and Prettier and is
+  only needed at development time.
+- The examples are checked against `@tanstack/lit-query@0.2.25`.
 
-## Configuration and CLI
+Orval depends on esbuild, which needs its install script. pnpm only runs approved
+install scripts, so allow it in `pnpm-workspace.yaml`:
 
-Create `lit-query-codegen.config.ts` in your application:
+```yaml
+allowBuilds:
+  esbuild: true
+```
+
+Without this, `pnpm add` fails with `ERR_PNPM_IGNORED_BUILDS`. npm and Yarn run the
+script without extra configuration.
+
+## Configure and generate
+
+Create `lit-canon-api.config.ts` in your application:
 
 ```ts
-import { defineConfig } from "lit-query-codegen";
+import { defineConfig } from "lit-canon-api";
 
 export default defineConfig({
   input: "./openapi.json",
@@ -42,31 +43,31 @@ export default defineConfig({
 });
 ```
 
-All file paths are resolved relative to the configuration file. Formatting follows
-your project's Prettier configuration. Override individual options with, for
-example, `prettier: { printWidth: 100 }`.
+Paths are relative to the config file. Use a dedicated output directory and keep
+handwritten code outside it. Formatting follows your project's Prettier
+configuration; override options with, for example, `prettier: { printWidth: 100 }`.
 
-Add generation and drift-check commands to your `package.json`:
+Add the two commands to your `package.json`:
 
 ```json
 {
   "scripts": {
-    "api:generate": "lit-query-codegen",
-    "api:check": "lit-query-codegen --check"
+    "api:generate": "lit-canon-api generate",
+    "api:check": "lit-canon-api check"
   }
 }
 ```
 
 ```bash
-npm run api:generate
-npm run api:check
-npx lit-query-codegen --config other.config.ts
+pnpm api:generate
+pnpm api:check
+pnpm lit-canon-api generate --config other.config.ts
 ```
 
-`api:generate` writes the client. `api:check` checks for drift without replacing
-existing files. Keep handwritten code outside the dedicated generated directory.
+`generate` writes the client. `check` compares a fresh generation with the committed
+client and exits with code 1 on any difference, without changing files. Run it in CI.
 See [configuration](configuration.md#run-the-generator) for output ownership and
-preserving directories owned by another generator.
+directories owned by another generator.
 
 ## What does the generated code look like?
 
@@ -79,9 +80,9 @@ The checked-in [product catalog specification](../examples/catalog/openapi.json)
 | `POST /products` · `create_product`            | `createProduct({ name, price })`        | `createProductMutation()`          |
 | `PUT /products/{productId}` · `update_product` | `updateProduct("p-1", { name, price })` | `updateProductMutation()`          |
 
-All four operations have the OpenAPI tag `products`. Tags become feature directories;
-`snake_case` operation IDs become `camelCase` function names. GET operations become
-queries by default; other HTTP methods become mutations.
+All four operations have the OpenAPI tag `products`. Each tag becomes a resource
+directory; `snake_case` operation IDs become `camelCase` function names. GET
+operations become queries; other HTTP methods become mutations.
 
 ```text
 generated/
@@ -89,15 +90,15 @@ generated/
   products/
     models.ts                # Product, ProductInput, ListProductsParams
     api.ts                   # typed fetch functions
-    queries.ts               # query keys + query functions
-    mutations.ts             # mutation keys + mutation functions
-    index.ts                 # feature exports + runtime error types
+    queries.ts               # productsKeys + query options
+    mutations.ts             # mutation options
+    index.ts                 # resource exports + runtime error types
 ```
 
-These are actual excerpts from the committed output; headers and unrelated
-declarations are omitted here. The linked files contain the complete generated code.
+These are excerpts from the committed output, without the file headers. The linked
+files contain the complete generated code.
 
-**[models.ts](../examples/catalog/generated/products/models.ts)** — types derived from the schema:
+**[models.ts](../examples/catalog/generated/products/models.ts)**: types derived from the schema.
 
 ```ts
 export interface Product {
@@ -108,7 +109,7 @@ export interface Product {
 }
 ```
 
-**[api.ts](../examples/catalog/generated/products/api.ts)** — a normal typed function you can call directly:
+**[api.ts](../examples/catalog/generated/products/api.ts)**: a typed function you can call directly.
 
 ```ts
 export const listProducts = (
@@ -118,92 +119,133 @@ export const listProducts = (
   apiFetch<Product[]>("/products", { ...options, method: "GET", query: params });
 ```
 
-**[queries.ts](../examples/catalog/generated/products/queries.ts)** — the request wired to TanStack Query:
+**[queries.ts](../examples/catalog/generated/products/queries.ts)**: a key factory and query options.
 
 ```ts
+export const productsKeys = {
+  all: ["products"] as const,
+  listProducts: (params?: Parameters<typeof listProducts>[0]) =>
+    ["products", "listProducts", params ?? null] as const,
+  getProduct: (productId: Parameters<typeof getProduct>[0]) =>
+    ["products", "getProduct", productId] as const,
+};
+
 export const listProductsQuery = (params?: Parameters<typeof listProducts>[0]) =>
   queryOptions({
-    queryKey: ["products", "listProducts", params ?? null] as const,
+    queryKey: productsKeys.listProducts(params),
     queryFn: ({ signal }) => listProducts(params, { signal }),
   });
 ```
 
-**[mutations.ts](../examples/catalog/generated/products/mutations.ts)** — typed inputs for writes:
+**[mutations.ts](../examples/catalog/generated/products/mutations.ts)**: mutation
+options that take one object.
 
 ```ts
-export const createProductMutation = () =>
+export const updateProductMutation = () =>
   mutationOptions({
-    mutationKey: ["products", "createProduct"] as const,
-    mutationFn: (variables: Parameters<typeof createProduct>[0]) => createProduct(variables),
+    mutationKey: ["products", "updateProduct"] as const,
+    mutationFn: (variables: {
+      productId: Parameters<typeof updateProduct>[0];
+      request: Parameters<typeof updateProduct>[1];
+    }) => updateProduct(variables.productId, variables.request),
   });
 ```
 
-Operations with multiple inputs use one typed tuple of variables. For example,
-`updateProductMutation()` expects `[productId, { name, price }]` when you call
-the mutation controller's `mutate` method.
+The properties are named after the parameters of the API function: path parameters
+by name, `params` for query parameters and `request` for the body. Call it with
+`mutate({ productId: "p-1", request: { name, price } })`.
 
 ## Use it in a Lit component
 
-Create a shared `QueryClient` and pass the generated options to a controller:
+Provide one `QueryClient` above your components, then create controllers without a
+client argument. They find the client through `queryClientContext`:
 
 ```ts
 import { LitElement, html } from "lit";
-import { QueryClient, createQueryController } from "@tanstack/lit-query";
+import { createMutationController, createQueryController } from "@tanstack/lit-query";
 import { products } from "./api/generated";
 
-const queryClient = new QueryClient();
-
 class ProductList extends LitElement {
-  private readonly catalog = createQueryController(
-    this,
-    () => ({ ...products.listProductsQuery({ limit: 20 }), staleTime: 60_000 }),
-    queryClient,
-  );
+  private readonly catalog = createQueryController(this, () => ({
+    ...products.listProductsQuery({ limit: 20 }),
+    staleTime: 60_000,
+  }));
+
+  private readonly create = createMutationController(this, () => ({
+    ...products.createProductMutation(),
+    onSuccess: (_product, _variables, _onMutateResult, { client }) =>
+      client.invalidateQueries({ queryKey: products.productsKeys.all }),
+  }));
 
   override render() {
     const query = this.catalog();
     if (query.isPending) return html`<p>Loading products…</p>`;
     if (query.isError) return html`<p>${query.error.message}</p>`;
 
-    return html`<ul>
-      ${query.data.map((product) => html`<li>${product.name}</li>`)}
-    </ul>`;
+    return html`
+      <ul>
+        ${query.data.map((product) => html`<li>${product.name}</li>`)}
+      </ul>
+      <button @click=${() => this.create.mutate({ request: { name: "Notebook", price: 12.5 } })}>
+        Add
+      </button>
+    `;
   }
 }
 
 customElements.define("product-list", ProductList);
 ```
 
-Add `<product-list></product-list>` to your page after importing the component.
-The data is inferred as `Product[]`; you can add options such as `staleTime`
-without changing the generated files. A `QueryClientProvider` can supply the client
-through Lit context instead of passing it explicitly.
+The data is inferred as `Product[]`. Options such as `staleTime` or `enabled` are
+spread next to the generated options. After a successful write, the mutation
+invalidates every `products` query through `productsKeys.all`, using the client
+TanStack passes to `onSuccess`.
 
-The complete [catalog component](../examples/catalog/catalog-element.ts) also creates
-products with `createMutationController` and invalidates the `products` queries
-after a successful write.
+To provide the client:
+
+- **In a lit-canon app**, add `provide(queryClientContext, () => new QueryClient())`
+  to `createApp`. See [Using the client in a lit-canon app](lit-canon.md).
+- **In any other Lit app**, render the components inside a `QueryClientProvider`, as
+  [catalog-app.ts](../examples/catalog/catalog-app.ts) does.
+
+## Configure requests
+
+By default, requests use relative paths and include cookies. Configure the runtime
+once when your application starts:
+
+```ts
+import { configureApiFetch } from "lit-canon-fetch";
+
+configureApiFetch({
+  baseUrl: "https://api.example.com",
+  headers: async (): Promise<HeadersInit> => ({ authorization: `Bearer ${await getToken()}` }),
+});
+```
+
+`getToken` stands for your own authentication code. See the [runtime guide](runtime.md)
+for header functions, errors and custom request modules.
 
 ## Try the checked-in example
 
-No backend is needed to generate or inspect the client. From this repository:
+No backend is needed to generate or inspect the client. From the repository root:
 
 ```bash
-npm ci
-npm run example:generate
-npm run example:check
-npm run typecheck
+pnpm install
+pnpm example:generate
+pnpm example:check
+pnpm typecheck
 ```
 
-[`examples/catalog/`](../examples/catalog/README.md) contains the OpenAPI input, config,
-generated output and a handwritten Lit component. `example:generate` rebuilds the
-generator and updates that output. `example:check` verifies it without modifying
-files; CI runs the same check. The component requires a matching API and a Lit app
-to make real requests; this example does not include an API server or dev server.
+[`examples/catalog/`](../examples/catalog/README.md) contains the OpenAPI input,
+config, generated output and handwritten Lit components. `example:generate` builds
+the packages and updates the output; `example:check` verifies it without changing
+files, as CI does. Making real requests requires a Lit app and a matching API.
 
 ## Where to go next
 
-- [Configuration](configuration.md) for feature rules, aliases and generation behavior.
-- [Runtime](runtime.md) for request defaults, errors and custom fetch mutators.
+- [Configuration](configuration.md) for options and generation behavior.
+- [Runtime](runtime.md) for request defaults, errors and custom request modules.
 - [OpenAPI requirements](openapi.md) if generation rejects your specification.
+- [Migration](migration.md) if you are upgrading from the 0.x generator.
 
 [All documentation](README.md)
