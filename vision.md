@@ -43,7 +43,7 @@ fastapi-canon  ──►  OpenAPI contract  ──►  lit-canon-api    (codegen
                                           lit-canon-fetch   (runtime)
                                                │
                                                ▼
-                                          lit-canon         (app composition)
+                                          lit-canon-composition   (app composition)
                                                │
                                                ▼
                                           scaffold · lint rules · reference app · AGENTS.md
@@ -51,12 +51,12 @@ fastapi-canon  ──►  OpenAPI contract  ──►  lit-canon-api    (codegen
 
 ### Available or in progress
 
-| Piece               | Responsibility                                                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **lit-canon**       | App composition: pages, features, layouts, guards, titles, lazy loading, dependency injection over Lit context.              |
-| **lit-canon-api**   | Generates a typed API client, query/mutation options and query-key factories for TanStack Lit Query from an OpenAPI spec.    |
-| **lit-canon-fetch** | The small browser runtime behind generated clients: requests, auth headers, typed problem details.                           |
-| **fastapi-canon**   | The backend counterpart: the canonical shape of a FastAPI service, including the OpenAPI conventions the frontend relies on. |
+| Piece                     | Responsibility                                                                                                               |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **lit-canon-composition** | App composition: pages, features, layouts, guards, titles, lazy loading, dependency injection over Lit context.              |
+| **lit-canon-api**         | Generates a typed API client, query/mutation options and query-key factories for TanStack Lit Query from an OpenAPI spec.    |
+| **lit-canon-fetch**       | The small browser runtime behind generated clients: requests, auth headers, typed problem details.                           |
+| **fastapi-canon**         | The backend counterpart: the canonical shape of a FastAPI service, including the OpenAPI conventions the frontend relies on. |
 
 ### The contract
 
@@ -110,7 +110,7 @@ Libraries alone don't make agents consistent. Every Canon project ships with:
 
 | Phase              | Outcome                                                                                                                                                          |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1. Foundations** | `lit-canon` v1 and `lit-canon-api` / `lit-canon-fetch` v1 released. The OpenAPI contract is written down and shared with fastapi-canon.                          |
+| **1. Foundations** | `lit-canon-composition` v1 and `lit-canon-api` / `lit-canon-fetch` v1 released. The OpenAPI contract is written down and shared with fastapi-canon.              |
 | **2. Proof**       | One real app built end to end on Canon. Every place where agents still vary is recorded.                                                                         |
 | **3. Enforcement** | Scaffold, generators, lint rules, shared config and a reference app.                                                                                             |
 | **4. Coverage**    | Async UI states and forms, then whatever phase 2 showed to vary most.                                                                                            |

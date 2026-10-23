@@ -9,7 +9,7 @@ Lit gives you components, but not an answer to "where does routing, dependency i
 ## Installation
 
 ```sh
-npm install lit-canon-composition lit @lit-labs/router @lit/context
+pnpm add lit-canon-composition lit @lit-labs/router @lit/context
 ```
 
 `lit`, `@lit-labs/router` and `@lit/context` are peer dependencies. The package is ESM only, and the library itself uses no decorators, so it works with `experimentalDecorators` and with standard decorators.
@@ -63,11 +63,11 @@ export const browsersFeature = defineFeature({
 
 Pages are plain `LitElement`s. They consume services with `@consume` (or `ContextConsumer`) from `@lit/context` and load their own data, for example with `@lit/task`.
 
-The full app (login, guarded lazy detail page, shell layout) lives in [`examples/basic`](examples/basic). Run it with:
+The full app (login, guarded lazy detail page, shell layout) lives in [`examples/basic`](examples/basic). Run it from the repository root with:
 
 ```sh
-npm install
-npm run example
+pnpm install
+pnpm --filter lit-canon-composition example
 ```
 
 ## API reference
@@ -179,8 +179,12 @@ Route-level data loaders, nested routes or layouts, typed params and `href()` he
 
 ## Development
 
+From the repository root:
+
 ```sh
-npm test          # Vitest browser mode, headless Chromium
-npm run typecheck
-npm run build     # emits dist/
+pnpm --filter lit-canon-composition test        # Vitest browser mode, headless Chromium
+pnpm --filter lit-canon-composition typecheck
+pnpm --filter lit-canon-composition build       # emits dist/
 ```
+
+See [development](../../docs/development.md) for the workspace setup.
