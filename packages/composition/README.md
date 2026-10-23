@@ -1,15 +1,15 @@
-# lit-canon
+# lit-canon-composition
 
 A thin, opinionated layer over [Lit](https://lit.dev) that gives single-page apps one canonical shape: **register pages, bundle them into features, compose features into an app.**
 
 ## Motivation
 
-Lit gives you components, but not an answer to "where does routing, dependency injection and page registration go?". `lit-canon` borrows the feature-slice pattern from FastAPI projects: every feature exports exactly one object, and the app holds an **explicit list** of those objects. There is no auto-discovery and no magic. It invents nothing either. It wires together [`@lit-labs/router`](https://www.npmjs.com/package/@lit-labs/router) (URL → template, lazy loading, link interception), [`@lit/context`](https://lit.dev/docs/data/context/) (dependency injection) and `lit` itself, in a few hundred lines.
+Lit gives you components, but not an answer to "where does routing, dependency injection and page registration go?". `lit-canon-composition` borrows the feature-slice pattern from FastAPI projects: every feature exports exactly one object, and the app holds an **explicit list** of those objects. There is no auto-discovery and no magic. It invents nothing either. It wires together [`@lit-labs/router`](https://www.npmjs.com/package/@lit-labs/router) (URL → template, lazy loading, link interception), [`@lit/context`](https://lit.dev/docs/data/context/) (dependency injection) and `lit` itself, in a few hundred lines.
 
 ## Installation
 
 ```sh
-npm install lit-canon lit @lit-labs/router @lit/context
+npm install lit-canon-composition lit @lit-labs/router @lit/context
 ```
 
 `lit`, `@lit-labs/router` and `@lit/context` are peer dependencies. The package is ESM only, and the library itself uses no decorators, so it works with `experimentalDecorators` and with standard decorators.
@@ -27,7 +27,7 @@ import 'urlpattern-polyfill';
 ```ts
 // main.ts
 import { html } from 'lit';
-import { createApp, provide } from 'lit-canon';
+import { createApp, provide } from 'lit-canon-composition';
 import { apiCtx, FakeApiClient } from './api.js';
 import { authFeature } from './features/auth/index.js';
 import { browsersFeature } from './features/browsers/index.js';
@@ -169,7 +169,7 @@ interface App {
 - **Entering a route:** guards → `load()` → title → render. If `load` rejects, the error is logged with the page path and the navigation is cancelled. When several navigations overlap (say a slow async guard and a second click), the latest one wins.
 - **Titles:** set after `load`. With `baseTitle`: `"{title} · {baseTitle}"`. Without `title`: just `baseTitle`. Without both, `document.title` is left alone.
 - **Scrolling:** after a new route renders, the window scrolls to the top. Back/forward (`popstate`) and the initial load do not scroll.
-- **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon adds no click handler.
+- **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon-composition adds no click handler.
 - `start()` appends the root element and routes the current URL. The root element renders into light DOM, so global styles reach layouts and pages.
 - `navigate(path)` does `history.pushState` and routes. It resolves once the navigation, including any redirects, has rendered. `path` may include a query string and hash.
 

@@ -1,5 +1,5 @@
 import { createContext } from '@lit/context';
-import { redirect, type Guard } from 'lit-canon';
+import { redirect, type Guard } from 'lit-canon-composition';
 
 export class AuthService {
   user: string | undefined;

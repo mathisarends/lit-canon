@@ -1,7 +1,7 @@
 import { LitElement, css, html } from 'lit';
 import { customElement } from 'lit/decorators.js';
 import { consume } from '@lit/context';
-import type { Layout } from 'lit-canon';
+import type { Layout } from 'lit-canon-composition';
 import { authCtx, type AuthService } from '../features/auth/auth-service.js';
 
 export const shellLayout: Layout = (content) => html`<app-shell>${content}</app-shell>`;

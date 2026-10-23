@@ -13,7 +13,7 @@
     "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "types": ["vite/client"],
-    "paths": { "lit-canon": ["./src/index.ts"] }
+    "paths": { "lit-canon-composition": ["./src/index.ts"] }
   },
   "include": ["src", "test", "examples/basic/src"]
 }

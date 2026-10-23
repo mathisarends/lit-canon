@@ -1,5 +1,5 @@
 import { html } from 'lit';
-import { defineFeature, definePage, provide, redirect } from 'lit-canon';
+import { defineFeature, definePage, provide, redirect } from 'lit-canon-composition';
 import { apiCtx } from '../../api.js';
 import { shellLayout } from '../../shell/shell-layout.js';
 import { requireAuth } from '../auth/auth-service.js';

@@ -1,5 +1,5 @@
 {
-  "name": "lit-canon",
+  "name": "lit-canon-composition",
   "version": "0.1.0",
   "description": "A thin, opinionated layer over Lit: register pages, bundle them into features, compose features into an app.",
   "type": "module",
