@@ -4,51 +4,95 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
-import { pathToFileURL } from "node:url";
 import { openapi } from "./fixtures.ts";
 
 const run = promisify(execFile);
-const npmCli = process.env.npm_execpath;
-if (!npmCli) {
-  throw new Error("Run this test with npm run test:package");
+const pnpmPath = process.env.npm_execpath;
+if (!pnpmPath || !/pnpm/i.test(basename(pnpmPath))) {
+  throw new Error("Run this test with pnpm test:package");
 }
 
-const { stdout } = await run(process.execPath, [npmCli, "pack", "--json"], {
-  cwd: process.cwd(),
-});
-const [{ filename }] = JSON.parse(stdout) as Array<{ filename: string }>;
-const tarball = resolve(filename);
-const root = await mkdtemp(join(tmpdir(), "lit-query-codegen-consumer-"));
-const npm = (args: string[]) => run(process.execPath, [npmCli, ...args], { cwd: root });
+/** pnpm is either a native executable or a JavaScript entry point. */
+function pnpm(args: string[], cwd: string) {
+  return /\.[cm]?js$/.test(pnpmPath!)
+    ? run(process.execPath, [pnpmPath!, ...args], { cwd })
+    : run(pnpmPath!, args, { cwd });
+}
+
+const packages = resolve("..");
+const root = await mkdtemp(join(tmpdir(), "lit-canon-api-consumer-"));
+
+/** Packs a workspace package and checks that only the published files are included. */
+async function pack(directory: string): Promise<string> {
+  const { stdout } = await pnpm(["pack", "--json", "--pack-destination", root], directory);
+  const result = JSON.parse(stdout.slice(stdout.indexOf("{"))) as {
+    filename: string;
+    files: Array<{ path: string }>;
+  };
+  const files = result.files.map((file) => file.path);
+  assert.ok(files.includes("README.md"), `${directory} packs README.md`);
+  assert.ok(files.includes("LICENSE"), `${directory} packs LICENSE`);
+  assert.deepEqual(
+    files.filter((file) => !/^(?:dist\/|README\.md$|LICENSE$|package\.json$)/.test(file)),
+    [],
+  );
+  return resolve(root, result.filename);
+}
 
 try {
+  const fetchTarball = await pack(join(packages, "fetch"));
+  const apiTarball = await pack(join(packages, "api"));
   await writeFile(
     join(root, "package.json"),
     JSON.stringify({
-      name: "independent-codegen-consumer",
+      name: "independent-api-consumer",
       private: true,
       type: "module",
-      scripts: { "api:generate": "lit-query-codegen", "api:check": "lit-query-codegen --check" },
+      scripts: { "api:generate": "lit-canon-api generate", "api:check": "lit-canon-api check" },
     }),
   );
-  await npm([
-    "install",
-    tarball,
-    "@tanstack/lit-query@0.2.25",
-    "--ignore-scripts",
-    "--no-audit",
-    "--no-fund",
-  ]);
+  // Orval depends on esbuild; pnpm only runs approved install scripts.
+  await writeFile(join(root, "pnpm-workspace.yaml"), "allowBuilds:\n  esbuild: true\n");
+  await pnpm(["add", fetchTarball, "@tanstack/lit-query@0.2.25", "lit@3.3.3"], root);
+  await pnpm(["add", "-D", apiTarball, "typescript@6.0.3"], root);
+
+  const runtimeManifest = JSON.parse(
+    await readFile(join(root, "node_modules/lit-canon-fetch/package.json"), "utf8"),
+  );
+  assert.equal(runtimeManifest.dependencies, undefined, "lit-canon-fetch has no dependencies");
+  assert.equal(runtimeManifest.version, "1.0.0");
+  const generatorManifest = await readFile(
+    join(root, "node_modules/lit-canon-api/package.json"),
+    "utf8",
+  );
+  assert.doesNotMatch(generatorManifest, /workspace:/);
+
   await writeFile(join(root, "openapi.json"), JSON.stringify(openapi()));
   await writeFile(
-    join(root, "lit-query-codegen.config.ts"),
+    join(root, "lit-canon-api.config.ts"),
     `
-import { defineConfig, type CodegenConfig } from "lit-query-codegen";
+import { defineConfig, type CodegenConfig } from "lit-canon-api";
 const config: CodegenConfig = {
   input: "./openapi.json", output: "./src/api/generated",
   excludeTags: ["system"], mutationOperations: ["start_login"],
 };
 export default defineConfig(config);
+`,
+  );
+  await writeFile(
+    join(root, "usage.ts"),
+    `
+import { configureApiFetch } from "lit-canon-fetch";
+import { items } from "./src/api/generated";
+
+configureApiFetch({
+  headers: async ({ method }): Promise<HeadersInit> => ({ "x-method": method }),
+});
+export const all = items.itemsKeys.all;
+export const query = items.getItemQuery("1");
+export const remove = items.deleteItemMutation();
+type Variables = Parameters<NonNullable<typeof remove.mutationFn>>[0];
+export const variables: Variables = { itemId: "1" };
 `,
   );
   await writeFile(
@@ -58,27 +102,25 @@ export default defineConfig(config);
         target: "ES2022",
         module: "ESNext",
         moduleResolution: "Bundler",
+        lib: ["ES2022", "DOM"],
         strict: true,
         noEmit: true,
         skipLibCheck: true,
       },
-      include: ["src", "lit-query-codegen.config.ts"],
+      include: ["src", "usage.ts", "lit-canon-api.config.ts"],
     }),
   );
-  await npm(["run", "api:generate"]);
-  await npm(["run", "api:check"]);
-  await npm(["exec", "--", "tsc", "--noEmit"]);
+  await pnpm(["run", "api:generate"], root);
+  await pnpm(["run", "api:check"], root);
+  await pnpm(["exec", "tsc", "--noEmit"], root);
   const api = await readFile(join(root, "src/api/generated/items/api.ts"), "utf8");
-  assert.match(api, /lit-query-codegen\/runtime/);
-  const runtime = await import(
-    pathToFileURL(join(root, "node_modules/lit-query-codegen/dist/runtime.js")).href
-  );
-  assert.equal(typeof runtime.createApiFetch, "function");
+  assert.match(api, /from "lit-canon-fetch"/);
+  assert.match(api, /Generated by lit-canon-api\. Do not edit manually\./);
   console.log(
-    "Packed npm package verified in an independent project: CLI, TS config, client, drift check and typecheck.",
+    "Packed packages verified in an independent project: CLI, TS config, client, drift check and typecheck.",
   );
 } finally {
   assert.equal(dirname(root), resolve(tmpdir()));
-  assert.ok(basename(root).startsWith("lit-query-codegen-consumer-"));
+  assert.ok(basename(root).startsWith("lit-canon-api-consumer-"));
   await rm(root, { recursive: true, force: true });
 }
