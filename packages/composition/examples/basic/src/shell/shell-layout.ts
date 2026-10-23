@@ -1,12 +1,12 @@
-import { LitElement, css, html } from 'lit';
-import { customElement } from 'lit/decorators.js';
-import { consume } from '@lit/context';
-import type { Layout } from 'lit-canon-composition';
-import { authCtx, type AuthService } from '../features/auth/auth-service.js';
+import { LitElement, css, html } from "lit";
+import { customElement } from "lit/decorators.js";
+import { consume } from "@lit/context";
+import type { Layout } from "lit-canon-composition";
+import { authCtx, type AuthService } from "../features/auth/auth-service.js";
 
 export const shellLayout: Layout = (content) => html`<app-shell>${content}</app-shell>`;
 
-@customElement('app-shell')
+@customElement("app-shell")
 export class AppShell extends LitElement {
   static override styles = css`
     header {
@@ -39,9 +39,12 @@ export class AppShell extends LitElement {
         <strong>Example</strong>
         <a href="/browsers">Browsers</a>
         <span class="spacer"></span>
-        ${user
-          ? html`<span>${user}</span> <a href="/login" @click=${() => this.auth.logout()}>Log out</a>`
-          : html`<a href="/login">Log in</a>`}
+        ${
+          user
+            ? html`<span>${user}</span>
+                <a href="/login" @click=${() => this.auth.logout()}>Log out</a>`
+            : html`<a href="/login">Log in</a>`
+        }
       </header>
       <main><slot></slot></main>
     `;

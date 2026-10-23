@@ -1,7 +1,7 @@
-import type { Container } from './container.js';
-import type { Params } from './page.js';
+import type { Container } from "./container.js";
+import type { Params } from "./page.js";
 
-const REDIRECT = Symbol('lit-canon.redirect');
+const REDIRECT = Symbol("lit-canon.redirect");
 
 /** Opaque result of {@link redirect}. */
 export interface Redirect {
@@ -22,4 +22,4 @@ export type Guard = (ctx: {
 export const redirect = (to: string): Redirect => Object.freeze({ [REDIRECT]: true as const, to });
 
 export const isRedirect = (value: unknown): value is Redirect =>
-  typeof value === 'object' && value !== null && REDIRECT in value;
+  typeof value === "object" && value !== null && REDIRECT in value;

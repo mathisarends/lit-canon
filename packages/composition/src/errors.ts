@@ -1,10 +1,10 @@
-const PREFIX = '[lit-canon]';
+const PREFIX = "[lit-canon]";
 
 /** Human-readable name of a context key created with `createContext`. */
 export const contextName = (context: unknown): string =>
-  typeof context === 'symbol'
+  typeof context === "symbol"
     ? (context.description ?? context.toString())
-    : typeof context === 'string'
+    : typeof context === "string"
       ? `"${context}"`
       : String(context);
 

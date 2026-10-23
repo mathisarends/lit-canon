@@ -1,5 +1,5 @@
-import { createContext } from '@lit/context';
-import { redirect, type Guard } from 'lit-canon-composition';
+import { createContext } from "@lit/context";
+import { redirect, type Guard } from "lit-canon-composition";
 
 export class AuthService {
   user: string | undefined;
@@ -13,7 +13,7 @@ export class AuthService {
   }
 }
 
-export const authCtx = createContext<AuthService>('auth-service');
+export const authCtx = createContext<AuthService>("auth-service");
 
 /** Sends anonymous users to the login page and back afterwards. */
 export const requireAuth: Guard = ({ container, path }) =>

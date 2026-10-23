@@ -1,6 +1,6 @@
-import type { TemplateResult } from 'lit';
-import type { ProviderDef } from './container.js';
-import type { PageDef } from './page.js';
+import type { TemplateResult } from "lit";
+import type { ProviderDef } from "./container.js";
+import type { PageDef } from "./page.js";
 
 /** Wraps every page of a feature. */
 export type Layout = (content: TemplateResult) => TemplateResult;

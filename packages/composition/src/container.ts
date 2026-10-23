@@ -1,5 +1,5 @@
-import type { Context } from '@lit/context';
-import { contextName, missingContext } from './errors.js';
+import type { Context } from "@lit/context";
+import { contextName, missingContext } from "./errors.js";
 
 export interface Container {
   get<T>(context: Context<unknown, T>): T;

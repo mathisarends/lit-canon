@@ -1,5 +1,5 @@
 {
-  "name": "lit-canon-api-workspace",
+  "name": "lit-canon-workspace",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.14.0",

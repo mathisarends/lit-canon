@@ -1,9 +1,9 @@
-import { LitElement, css, html } from 'lit';
-import { customElement } from 'lit/decorators.js';
-import { consume } from '@lit/context';
-import { authCtx, type AuthService } from './auth-service.js';
+import { LitElement, css, html } from "lit";
+import { customElement } from "lit/decorators.js";
+import { consume } from "@lit/context";
+import { authCtx, type AuthService } from "./auth-service.js";
 
-@customElement('login-page')
+@customElement("login-page")
 export class LoginPage extends LitElement {
   static override styles = css`
     :host {
@@ -28,16 +28,16 @@ export class LoginPage extends LitElement {
 
   /** Only same-site paths, so `?next=` cannot send users elsewhere. */
   private get next() {
-    const next = new URLSearchParams(location.search).get('next');
-    return next?.startsWith('/') && !next.startsWith('//') ? next : '/browsers';
+    const next = new URLSearchParams(location.search).get("next");
+    return next?.startsWith("/") && !next.startsWith("//") ? next : "/browsers";
   }
 
   override render() {
     // The router intercepts this link; the click handler logs in first, so the guard passes.
     return html`
       <h1>Log in</h1>
-      <p>${this.auth.user ? `Logged in as ${this.auth.user}.` : 'You are not logged in.'}</p>
-      <a href=${this.next} @click=${() => this.auth.login('demo')}>Log in as demo</a>
+      <p>${this.auth.user ? `Logged in as ${this.auth.user}.` : "You are not logged in."}</p>
+      <a href=${this.next} @click=${() => this.auth.login("demo")}>Log in as demo</a>
     `;
   }
 }

@@ -1,10 +1,10 @@
-import { LitElement, html } from 'lit';
-import { customElement } from 'lit/decorators.js';
-import { consume } from '@lit/context';
-import { Task } from '@lit/task';
-import { browserServiceCtx, type BrowserService } from '../browser-service.js';
+import { LitElement, html } from "lit";
+import { customElement } from "lit/decorators.js";
+import { consume } from "@lit/context";
+import { Task } from "@lit/task";
+import { browserServiceCtx, type BrowserService } from "../browser-service.js";
 
-@customElement('browser-list-page')
+@customElement("browser-list-page")
 export class BrowserListPage extends LitElement {
   @consume({ context: browserServiceCtx }) browsers!: BrowserService;
 

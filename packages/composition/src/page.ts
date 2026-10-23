@@ -1,5 +1,5 @@
-import type { TemplateResult } from 'lit';
-import type { Guard } from './guard.js';
+import type { TemplateResult } from "lit";
+import type { Guard } from "./guard.js";
 
 export type Params = Record<string, string | undefined>;
 

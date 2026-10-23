@@ -19,42 +19,42 @@ npm install lit-canon-composition lit @lit-labs/router @lit/context
 The router matches paths with [`URLPattern`](https://developer.mozilla.org/en-US/docs/Web/API/URLPattern). If you support browsers without it, load [`urlpattern-polyfill`](https://www.npmjs.com/package/urlpattern-polyfill) before your app starts:
 
 ```ts
-import 'urlpattern-polyfill';
+import "urlpattern-polyfill";
 ```
 
 ## Example
 
 ```ts
 // main.ts
-import { html } from 'lit';
-import { createApp, provide } from 'lit-canon-composition';
-import { apiCtx, FakeApiClient } from './api.js';
-import { authFeature } from './features/auth/index.js';
-import { browsersFeature } from './features/browsers/index.js';
+import { html } from "lit";
+import { createApp, provide } from "lit-canon-composition";
+import { apiCtx, FakeApiClient } from "./api.js";
+import { authFeature } from "./features/auth/index.js";
+import { browsersFeature } from "./features/browsers/index.js";
 
 const FEATURES = [authFeature, browsersFeature];
 
 createApp({
-  root: document.querySelector('#app')!,
+  root: document.querySelector("#app")!,
   features: FEATURES,
   providers: [provide(apiCtx, () => new FakeApiClient())],
   notFound: () => html`<not-found-page></not-found-page>`,
-  baseTitle: 'Example',
+  baseTitle: "Example",
 }).start();
 ```
 
 ```ts
 // features/browsers/index.ts
 export const browserDetail = definePage({
-  path: '/browsers/:id',
-  load: () => import('./pages/browser-detail-page.js'),
+  path: "/browsers/:id",
+  load: () => import("./pages/browser-detail-page.js"),
   render: ({ id }) => html`<browser-detail-page .params=${{ id }}></browser-detail-page>`,
   title: ({ params }) => `Browser ${params.id}`,
   guards: [requireAuth],
 });
 
 export const browsersFeature = defineFeature({
-  name: 'browsers',
+  name: "browsers",
   pages: [browserList, browserDetail],
   layout: shellLayout,
   providers: [provide(browserServiceCtx, (c) => new BrowserService(c.get(apiCtx)))],
