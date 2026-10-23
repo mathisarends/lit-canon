@@ -42,23 +42,26 @@ export interface ApiFetchConfig {
   fetch?: typeof globalThis.fetch;
 }
 
-function withQuery(url: string, query: object | undefined): string {
-  if (!query) {
-    return url;
-  }
-  const [path, fragment] = url.split("#", 2);
+const ABSOLUTE_URL = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
+
+/** Appends query parameters before the fragment. Arrays repeat the key. */
+function withQuery(url: string, query: object = {}): string {
   const params = new URLSearchParams();
-  for (const [key, rawValue] of Object.entries(query)) {
-    const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-    for (const value of values) {
+  for (const [key, value] of Object.entries(query)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
       // null and undefined mean "not set" and are left out of the URL.
-      if (value !== undefined && value !== null) {
-        params.append(key, String(value));
+      if (item !== null && item !== undefined) {
+        params.append(key, String(item));
       }
     }
   }
-  const result = params.size ? `${path}${path.includes("?") ? "&" : "?"}${params}` : path;
-  return fragment === undefined ? result : `${result}#${fragment}`;
+  if (!params.size) {
+    return url;
+  }
+  const hashIndex = url.indexOf("#");
+  const path = hashIndex === -1 ? url : url.slice(0, hashIndex);
+  const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
+  return `${path}${path.includes("?") ? "&" : "?"}${params}${hash}`;
 }
 
 function isJsonBody(body: unknown): boolean {
@@ -92,46 +95,68 @@ function toProblem(value: unknown): ApiProblem | null {
   return candidate as ApiProblem;
 }
 
+/** Config headers first, then per-request headers on top. */
+async function resolveHeaders(
+  defaults: ApiFetchConfig["headers"],
+  request: { url: string; method: string },
+  overrides: HeadersInit | undefined,
+): Promise<Headers> {
+  const headers = new Headers(typeof defaults === "function" ? await defaults(request) : defaults);
+  new Headers(overrides).forEach((value, key) => headers.set(key, value));
+  return headers;
+}
+
+/** Serializes plain objects and arrays as JSON; FormData, Blob and strings pass through. */
+function encodeBody(body: unknown, headers: Headers): BodyInit | null | undefined {
+  if (body === undefined || !isJsonBody(body)) {
+    return body as BodyInit | null | undefined;
+  }
+  if (!headers.has("content-type")) {
+    headers.set("content-type", "application/json");
+  }
+  return JSON.stringify(body);
+}
+
+function parseProblem(text: string): ApiProblem | null {
+  try {
+    return toProblem(JSON.parse(text));
+  } catch {
+    // Keep the HTTP status when the API returns an invalid error body.
+    return null;
+  }
+}
+
+/** Returns parsed JSON, text or undefined; throws ApiError for non-2xx responses. */
+async function readResponse<T>(response: Response, method: string): Promise<T> {
+  const hasBody = method !== "HEAD" && response.status !== 204 && response.status !== 205;
+  const text = hasBody ? await response.text() : "";
+  const json = isJson(response.headers.get("content-type"));
+  if (!response.ok) {
+    throw new ApiError(response.status, json && text ? parseProblem(text) : null);
+  }
+  if (!text) {
+    return undefined as T;
+  }
+  return (json ? JSON.parse(text) : text) as T;
+}
+
 export function createApiFetch(config: ApiFetchConfig = {}) {
-  return async function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T> {
-    const { body: requestBody, query, headers: inputHeaders, ...requestOptions } = options ?? {};
-    const method = (requestOptions.method ?? "GET").toUpperCase();
-    const headers = new Headers(
-      typeof config.headers === "function" ? await config.headers({ url, method }) : config.headers,
-    );
-    new Headers(inputHeaders).forEach((value, key) => headers.set(key, value));
-    const jsonBody = requestBody !== undefined && isJsonBody(requestBody);
-    if (jsonBody && !headers.has("content-type")) {
-      headers.set("content-type", "application/json");
-    }
-    const baseUrl = config.baseUrl?.replace(/\/+$/, "") ?? "";
-    const target = /^(?:[a-z][a-z\d+.-]*:)?\/\//i.test(url) ? url : `${baseUrl}${url}`;
-    const response = await (config.fetch ?? globalThis.fetch)(withQuery(target, query), {
-      ...requestOptions,
-      credentials: requestOptions.credentials ?? config.credentials ?? "include",
+  const baseUrl = config.baseUrl?.replace(/\/+$/, "") ?? "";
+
+  return async function apiFetch<T>(url: string, options: ApiRequestOptions = {}): Promise<T> {
+    const { body, query, headers: requestHeaders, ...init } = options;
+    const method = (init.method ?? "GET").toUpperCase();
+    const headers = await resolveHeaders(config.headers, { url, method }, requestHeaders);
+    const encodedBody = encodeBody(body, headers);
+    const target = ABSOLUTE_URL.test(url) ? url : baseUrl + url;
+    const send = config.fetch ?? globalThis.fetch;
+    const response = await send(withQuery(target, query), {
+      ...init,
+      credentials: init.credentials ?? config.credentials ?? "include",
       headers,
-      body: jsonBody ? JSON.stringify(requestBody) : (requestBody as BodyInit | null | undefined),
+      body: encodedBody,
     });
-    const responseBody =
-      response.status === 204 || response.status === 205 || requestOptions.method === "HEAD"
-        ? ""
-        : await response.text();
-    const json = isJson(response.headers.get("content-type"));
-    if (!response.ok) {
-      let problem: ApiProblem | null = null;
-      if (json && responseBody) {
-        try {
-          problem = toProblem(JSON.parse(responseBody));
-        } catch {
-          // Preserve the HTTP status when the API returns an invalid error body.
-        }
-      }
-      throw new ApiError(response.status, problem);
-    }
-    if (!responseBody) {
-      return undefined as T;
-    }
-    return (json ? JSON.parse(responseBody) : responseBody) as T;
+    return readResponse<T>(response, method);
   };
 }
 

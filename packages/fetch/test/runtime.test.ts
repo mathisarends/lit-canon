@@ -43,6 +43,8 @@ test("handles empty responses, text and problem details, including invalid error
   const respond = (response: Response) => createApiFetch({ fetch: async () => response });
   assert.equal(await respond(new Response(null, { status: 204 }))("/empty"), undefined);
   assert.equal(await respond(new Response("plain"))("/text"), "plain");
+  // Not read for HEAD in any letter case.
+  assert.equal(await respond(new Response("ignored"))("/head", { method: "head" }), undefined);
   const problem = { type: "about:blank", title: "Forbidden", status: 403, detail: "No access" };
   await assert.rejects(
     respond(
