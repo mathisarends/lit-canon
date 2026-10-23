@@ -1,72 +1,28 @@
 {
-  "name": "lit-query-codegen",
-  "version": "0.1.0",
-  "description": "Generate typed TypeScript API clients, query keys and TanStack Lit Query options from OpenAPI.",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/mathisarends/lit-query-codegen.git"
-  },
-  "bugs": {
-    "url": "https://github.com/mathisarends/lit-query-codegen/issues"
-  },
+  "name": "lit-canon-api-workspace",
+  "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.14.0",
   "engines": {
     "node": ">=22.18.0"
   },
-  "bin": {
-    "lit-query-codegen": "./dist/cli.js"
-  },
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    },
-    "./runtime": {
-      "types": "./dist/runtime.d.ts",
-      "import": "./dist/runtime.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "dist",
-    "src/runtime.ts",
-    "examples"
-  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test test/*.test.ts",
-    "test:package": "node test/package-smoke.ts",
-    "typecheck": "npm run build && tsc -p tsconfig.test.json",
-    "example:generate": "npm run build && node dist/cli.js --config examples/catalog/lit-query-codegen.config.ts",
-    "example:check": "npm run build && node dist/cli.js --config examples/catalog/lit-query-codegen.config.ts --check",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "test:package": "pnpm --filter lit-canon-api test:package",
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json",
+    "example:generate": "pnpm -r build && node packages/api/dist/cli.js --config examples/catalog/lit-canon-api.config.ts",
+    "example:check": "pnpm -r build && node packages/api/dist/cli.js --config examples/catalog/lit-canon-api.config.ts --check",
     "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "prepack": "npm run build"
-  },
-  "dependencies": {
-    "@orval/core": "8.38.0",
-    "jiti": "2.6.1",
-    "orval": "8.38.0",
-    "prettier": "3.9.9",
-    "typescript": "6.0.3"
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "@scalar/openapi-types": "0.9.7",
     "@tanstack/lit-query": "0.2.25",
-    "@types/node": "^24.0.0"
-  },
-  "keywords": [
-    "openapi",
-    "openapi-client",
-    "orval",
-    "lit",
-    "lit-query",
-    "web-components",
-    "typescript",
-    "tanstack-query",
-    "codegen",
-    "api-client",
-    "fetch"
-  ]
+    "@types/node": "^24.0.0",
+    "lit": "^3.3.3",
+    "lit-canon-fetch": "workspace:*",
+    "lit-canon-api": "workspace:*",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3"
+  }
 }

@@ -7,5 +7,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["test/**/*.ts", "examples/**/*.ts"]
+  "include": ["test/**/*.ts"]
 }

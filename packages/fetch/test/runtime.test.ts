@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ApiError, createApiFetch } from "../dist/runtime.js";
+import { ApiError, createApiFetch } from "../dist/index.js";
 
 test("serializes query, JSON and multipart requests and forwards overrides", async () => {
   const requests: Array<{ url: RequestInfo | URL; init: RequestInit }> = [];

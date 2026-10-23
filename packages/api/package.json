@@ -1,0 +1,66 @@
+{
+  "name": "lit-canon-api",
+  "version": "1.0.0",
+  "description": "Generate typed TypeScript API clients, query keys and TanStack Lit Query options from OpenAPI.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mathisarends/lit-canon-api.git",
+    "directory": "packages/api"
+  },
+  "bugs": {
+    "url": "https://github.com/mathisarends/lit-canon-api/issues"
+  },
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "bin": {
+    "lit-canon-api": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "pnpm run build && node --test test/*.test.ts",
+    "test:package": "node test/package-smoke.ts",
+    "typecheck": "pnpm run build && tsc -p tsconfig.test.json",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "@orval/core": "8.38.0",
+    "jiti": "2.6.1",
+    "orval": "8.38.0",
+    "prettier": "3.9.9",
+    "typescript": "6.0.3"
+  },
+  "devDependencies": {
+    "@scalar/openapi-types": "0.9.7",
+    "@tanstack/lit-query": "0.2.25",
+    "@types/node": "^24.0.0",
+    "lit-canon-fetch": "workspace:*"
+  },
+  "keywords": [
+    "openapi",
+    "openapi-client",
+    "orval",
+    "lit",
+    "lit-query",
+    "lit-canon",
+    "web-components",
+    "typescript",
+    "tanstack-query",
+    "codegen",
+    "api-client"
+  ]
+}

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 import ts from "typescript";
 import { generate } from "../dist/index.js";
-import { ApiError, configureApiFetch } from "../dist/runtime.js";
+import { ApiError, configureApiFetch } from "lit-canon-fetch";
 import { openapi } from "./fixtures.ts";
 
 let root: string;
