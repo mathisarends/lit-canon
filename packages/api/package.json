@@ -4,11 +4,12 @@
   "description": "Generate typed TypeScript API clients, query keys and TanStack Lit Query options from OpenAPI.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mathisarends/lit-canon-api.git",
+    "url": "git+https://github.com/mathisarends/lit-canon.git",
     "directory": "packages/api"
   },
+  "homepage": "https://github.com/mathisarends/lit-canon/tree/main/packages/api#readme",
   "bugs": {
-    "url": "https://github.com/mathisarends/lit-canon-api/issues"
+    "url": "https://github.com/mathisarends/lit-canon/issues"
   },
   "type": "module",
   "license": "MIT",
