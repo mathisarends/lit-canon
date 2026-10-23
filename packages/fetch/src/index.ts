@@ -31,7 +31,14 @@ export type ApiRequestOptions = Omit<RequestInit, "body"> & {
 export interface ApiFetchConfig {
   baseUrl?: string;
   credentials?: RequestCredentials;
-  headers?: HeadersInit;
+  /**
+   * Static headers, or a function called before every request with the path from the
+   * generated client (before `baseUrl` and the query string) and the upper-case method.
+   * Per-request headers override these.
+   */
+  headers?:
+    | HeadersInit
+    | ((request: { url: string; method: string }) => HeadersInit | Promise<HeadersInit>);
   fetch?: typeof globalThis.fetch;
 }
 
@@ -44,8 +51,9 @@ function withQuery(url: string, query: object | undefined): string {
   for (const [key, rawValue] of Object.entries(query)) {
     const values = Array.isArray(rawValue) ? rawValue : [rawValue];
     for (const value of values) {
-      if (value !== undefined) {
-        params.append(key, value === null ? "null" : String(value));
+      // null and undefined mean "not set" and are left out of the URL.
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
       }
     }
   }
@@ -87,7 +95,10 @@ function toProblem(value: unknown): ApiProblem | null {
 export function createApiFetch(config: ApiFetchConfig = {}) {
   return async function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T> {
     const { body: requestBody, query, headers: inputHeaders, ...requestOptions } = options ?? {};
-    const headers = new Headers(config.headers);
+    const method = (requestOptions.method ?? "GET").toUpperCase();
+    const headers = new Headers(
+      typeof config.headers === "function" ? await config.headers({ url, method }) : config.headers,
+    );
     new Headers(inputHeaders).forEach((value, key) => headers.set(key, value));
     const jsonBody = requestBody !== undefined && isJsonBody(requestBody);
     if (jsonBody && !headers.has("content-type")) {
