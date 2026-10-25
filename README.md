@@ -52,6 +52,10 @@ Then follow [getting started](docs/getting-started.md). Upgrading from
 
 ## Documentation
 
+Intent prefetching and editable page scaffolding are covered in the
+[guide](docs/prefetching.md). Run `pnpm example:prefetch` for a self-contained catalog
+demo with lazy pages and a delayed local API.
+
 | Task                                               | Read                                                     |
 | -------------------------------------------------- | -------------------------------------------------------- |
 | Install, generate and use a client                 | [Getting started](docs/getting-started.md)               |

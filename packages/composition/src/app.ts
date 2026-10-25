@@ -11,6 +11,7 @@ import * as errors from "./errors.js";
 import type { FeatureDef } from "./feature.js";
 import { isRedirect } from "./guard.js";
 import type { PageDef, Params } from "./page.js";
+import { IntentPrefetchController } from "./intent-prefetch.js";
 
 export interface AppOptions {
   /** Element the root element is appended to. */
@@ -29,6 +30,8 @@ export interface App {
   start(): void;
   /** `history.pushState` + routing. Resolves once the navigation (and any redirects) settled. */
   navigate(path: string): Promise<void>;
+  /** Best-effort same-origin intent prefetch; does not navigate or execute guards. */
+  prefetch(href: string): Promise<void>;
   container: Container;
 }
 
@@ -47,6 +50,62 @@ export function createApp(options: AppOptions): App {
   const providers = collectProviders(options);
   validate(options, providers, rootTagName);
   const { container, values } = resolveProviders(providers);
+  const pages = features
+    .flatMap((feature) => feature.pages)
+    .map((page) => ({
+      page,
+      pattern: new URLPattern({ pathname: page.path }),
+    }));
+  const loads = new Map<PageDef, Promise<unknown>>();
+  const pending = new Map<string, Promise<void>>();
+
+  // Share chunk loads across hover and navigation; a failed load can be retried.
+  const load = (page: PageDef): Promise<unknown> => {
+    let task = loads.get(page);
+    if (!task) {
+      task = Promise.resolve().then(() => page.load?.());
+      loads.set(page, task);
+      void task.catch(() => loads.delete(page));
+    }
+    return task;
+  };
+
+  const prefetch = async (href: string): Promise<void> => {
+    try {
+      const connection = (navigator as Navigator & { connection?: { saveData?: boolean } })
+        .connection;
+      if (connection?.saveData) return;
+      const url = new URL(href, location.href);
+      if (url.origin !== location.origin || !/^https?:$/.test(url.protocol)) return;
+      if (url.pathname === location.pathname && url.search === location.search) return;
+      const key = url.pathname + url.search;
+      const existing = pending.get(key);
+      if (existing) return await existing;
+      const match = pages.find(({ pattern }) => pattern.test({ pathname: url.pathname }));
+      if (!match) return;
+      const { page, pattern } = match;
+      const ctx = {
+        params: pattern.exec({ pathname: url.pathname })!.pathname.groups,
+        path: url.pathname,
+        url,
+        container,
+      };
+      const task = (async () => {
+        if (page.canPrefetch) {
+          if (!(await page.canPrefetch(ctx))) return;
+        } else if (page.guards?.length) return;
+        await Promise.allSettled([load(page), Promise.resolve().then(() => page.prefetch?.(ctx))]);
+      })();
+      pending.set(key, task);
+      try {
+        await task;
+      } finally {
+        pending.delete(key);
+      }
+    } catch {
+      // Intent must never affect navigation, including permission checks and chunk failures.
+    }
+  };
 
   let root: RootElement | undefined;
   // Set right before the router calls `enter`; link clicks leave it unset (= DEFAULT_INTENT).
@@ -115,7 +174,12 @@ export function createApp(options: AppOptions): App {
           if (result !== true) return cancel();
         }
         try {
-          await page.load?.();
+          // Start data early even without hover, but keep data errors and latency in the page.
+          const ctx = { params, path, url: new URL(location.href), container };
+          void Promise.resolve()
+            .then(() => page.prefetch?.(ctx))
+            .catch(() => {});
+          await load(page);
         } catch (err) {
           if (stale()) return false;
           console.error(errors.loadFailed(page.path), err);
@@ -153,6 +217,7 @@ export function createApp(options: AppOptions): App {
 
     constructor() {
       super();
+      new IntentPrefetchController(this, prefetch);
       for (const [context, initialValue] of values) {
         new ContextProvider(this, { context: context as Context<unknown, unknown>, initialValue });
       }
@@ -190,6 +255,7 @@ export function createApp(options: AppOptions): App {
 
   return {
     container,
+    prefetch,
     start() {
       if (root) return;
       root = document.createElement(rootTagName) as RootElement;

@@ -12,6 +12,8 @@ Choose the path that matches what you want to do.
    request modules.
 4. [Using the client in a lit-canon app](lit-canon.md): the canonical setup with
    `lit-canon-composition`.
+5. [Prefetching and page scaffolding](prefetching.md): shared query options, intent
+   prefetch and the one-time `add-page` command.
 
 See [OpenAPI requirements](openapi.md) when preparing the specification or fixing a
 generation error, and [migration](migration.md) when upgrading from the 0.x

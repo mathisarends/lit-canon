@@ -81,11 +81,25 @@ interface PageDef {
   load?: () => Promise<unknown>; // lazy import, run before rendering
   title?: string | ((ctx: { params: Params }) => string);
   guards?: Guard[];
+  prefetch?: (ctx: PrefetchContext) => void | Promise<unknown>;
+  canPrefetch?: (ctx: PrefetchContext) => boolean | Promise<boolean>;
 }
 type Params = Record<string, string | undefined>;
 ```
 
 An identity function, for type inference and readability. It returns `def` (frozen). Validation happens in `createApp`.
+
+Simple `/:name` segments infer required string params in page callbacks. Intent
+prefetching starts the lazy chunk and `prefetch` hook together on hover (60 ms),
+focus or touch. Guarded pages require a side-effect-free `canPrefetch` check to opt
+in; hover never runs guards. `PrefetchContext` contains `params`, `path`, `url` and
+`container`. Data hooks never block navigation. See the
+[prefetch and scaffolding guide](../../docs/prefetching.md) and the
+[runnable catalog example](../../examples/catalog/prefetch/README.md).
+
+For TanStack, import `prefetchQueries` from `lit-canon-composition/query` and return
+a named object of shared query options. The adapter uses the existing
+`queryClientContext`; the core entrypoint remains independent of TanStack.
 
 ### `defineFeature(def: FeatureDef): FeatureDef`
 
@@ -159,6 +173,7 @@ interface AppOptions {
 interface App {
   start(): void;
   navigate(path: string): Promise<void>;
+  prefetch(href: string): Promise<void>; // best-effort intent; never navigates
   container: Container;
 }
 ```
@@ -166,7 +181,7 @@ interface App {
 `createApp` throws right away on a duplicate `path` (naming both features), a duplicate feature name, a context provided twice, or a `rootTagName` that is already a registered custom element.
 
 - **Routes** are `features.flatMap(f => f.pages)`, matched in that order. `notFound` is the router's fallback.
-- **Entering a route:** guards → `load()` → title → render. If `load` rejects, the error is logged with the page path and the navigation is cancelled. When several navigations overlap (say a slow async guard and a second click), the latest one wins.
+- **Entering a route:** guards → start `prefetch` and `load()` together → wait for `load()` → title → render. Data never blocks navigation. If `load` rejects, the error is logged with the page path and the navigation is cancelled. When several navigations overlap (say a slow async guard and a second click), the latest one wins.
 - **Titles:** set after `load`. With `baseTitle`: `"{title} · {baseTitle}"`. Without `title`: just `baseTitle`. Without both, `document.title` is left alone.
 - **Scrolling:** after a new route renders, the window scrolls to the top. Back/forward (`popstate`) and the initial load do not scroll.
 - **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon-composition adds no click handler.
@@ -175,7 +190,7 @@ interface App {
 
 ## Not included (v1)
 
-Route-level data loaders, nested routes or layouts, typed params and `href()` helpers, a query-param API, transitions, prefetching, breadcrumbs, meta tags, SSR, i18n, a page base class, and lazy or cyclic provider resolution are all left out on purpose.
+Blocking route data loaders, nested routes or layouts, typed `href()` helpers, a query-param API, transitions, breadcrumbs, meta tags, SSR, i18n, a page base class, and lazy or cyclic provider resolution are all left out on purpose.
 
 ## Development
 

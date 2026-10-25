@@ -49,6 +49,18 @@ update.mutate({ productId: "p-1", request: { name: "Notebook", price: 12.5 } });
 See the [documentation](https://github.com/mathisarends/lit-canon/tree/main/docs) for
 configuration, the OpenAPI contract and the generated code.
 
+## Page scaffolding
+
+After generating the client, scaffold an editable page and its shared start queries:
+
+```bash
+pnpm exec lit-canon-api add-page --feature src/features/products --name detail --path /products/:id --query product=get_product --bind product.productId=id
+```
+
+The command writes a lazy page, a shared query factory, a route descriptor and an
+explicit feature registration outside API output. It refuses application overwrites.
+See the [prefetch and scaffolding guide](../../docs/prefetching.md).
+
 ## License
 
 MIT

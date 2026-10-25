@@ -79,6 +79,11 @@ customElements.define("product-list-page", ProductListPage);
 Register the page with `definePage` and `defineFeature` as usual; nothing about the
 API client goes into the feature definition.
 
+To prefetch initial data on hover/focus, share a named query-options factory between
+the page controller and the route's `prefetch` hook. The
+[prefetch and scaffolding guide](prefetching.md) shows this pattern and the
+`lit-canon-api add-page` command that creates it.
+
 ## Rules
 
 - **One client per app**, provided with `provide(queryClientContext, ...)`. Pages and

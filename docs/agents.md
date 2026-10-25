@@ -27,6 +27,11 @@ Apps that use `lit-canon-api` follow these rules. Do not invent alternatives.
   credentials and headers. Auth headers use a (possibly async) header function.
 - **Call-site options stay at the call site**: spread `enabled`, `staleTime` or
   `select` next to the generated options.
+- **Prefetch and page share options.** For initial page data use one application-owned
+  named query factory; the route uses `prefetchQueries` and the component uses the
+  same factory with `createQueryController`. Freshness belongs in the shared factory;
+  observer-only `enabled`/`select` stay in the component. Scaffold with
+  `lit-canon-api add-page`; see [prefetching](prefetching.md).
 - **Errors are `ApiError`** with `status` and RFC 9457 `problem`; use the generated
   `is<Resource>Error` guard when problem types are generated.
 

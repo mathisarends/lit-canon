@@ -94,7 +94,7 @@ Libraries alone don't make agents consistent. Every Canon project ships with:
 ## Non-goals
 
 - **Canon is not a framework.** There is no compiler, no custom file format, no runtime beyond small, separable libraries. Every piece can be adopted, or dropped, on its own.
-- **No server-side rendering, no meta-framework features** such as route-level data loaders, file-based routing or edge rendering.
+- **No server-side rendering, no meta-framework features** such as blocking route-level data loaders, file-based routing or edge rendering. Speculative intent prefetching warms the existing query cache without blocking navigation.
 - **Not for every app.** Canon targets authenticated, data-driven single-page applications backed by an API: dashboards, admin tools, internal products. Content sites and marketing pages are better served elsewhere.
 - **No configuration for taste.** If two teams want different styles, Canon is not the place to reconcile them.
 

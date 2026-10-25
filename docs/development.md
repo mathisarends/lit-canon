@@ -30,15 +30,15 @@ pnpm format:check
 pnpm test:package
 ```
 
-| Command                 | What it does                                                                        |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `pnpm build`            | Builds every package into its `dist/`.                                              |
-| `pnpm typecheck`        | Typechecks every package, then the root `examples/` against the built packages.     |
-| `pnpm test`             | Runs `node --test` for api and fetch, and Vitest browser tests for composition.     |
-| `pnpm example:generate` | Builds, then regenerates `examples/catalog/generated/`.                             |
-| `pnpm example:check`    | Builds, then runs `lit-canon-api check` on the catalog example.                     |
-| `pnpm format:check`     | Checks Prettier formatting for the whole repository.                                |
-| `pnpm test:package`     | Packs api and fetch, installs them in a temporary pnpm project and generates there. |
+| Command                 | What it does                                                                                 |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `pnpm build`            | Builds every package into its `dist/`.                                                       |
+| `pnpm typecheck`        | Typechecks every package, then the root `examples/` against the built packages.              |
+| `pnpm test`             | Runs `node --test` for api and fetch, and Vitest browser tests for composition.              |
+| `pnpm example:generate` | Builds, then regenerates `examples/catalog/generated/`.                                      |
+| `pnpm example:check`    | Builds, then runs `lit-canon-api check` on the catalog example.                              |
+| `pnpm format:check`     | Checks Prettier formatting for the whole repository.                                         |
+| `pnpm test:package`     | Packs all packages, installs them in a temporary pnpm project and checks public entrypoints. |
 
 Run a single package with `pnpm --filter <name> <script>`, for example
 `pnpm --filter lit-canon-fetch test`. The composition example app runs with
