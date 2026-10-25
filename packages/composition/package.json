@@ -20,7 +20,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./query": {
+      "types": "./dist/query.d.ts",
+      "import": "./dist/query.js"
+    }
   },
   "files": [
     "dist",
@@ -36,9 +40,15 @@
     "prepack": "pnpm run build"
   },
   "peerDependencies": {
+    "@tanstack/lit-query": "^0.2.25",
     "@lit-labs/router": "^0.1.4",
     "@lit/context": "^1.1.6",
     "lit": "^3.3.3"
+  },
+  "peerDependenciesMeta": {
+    "@tanstack/lit-query": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@lit-labs/router": "^0.1.4",

@@ -34,7 +34,7 @@ export default defineConfig({
 });
 ```
 
-All paths are resolved relative to the config file. The CLI has two commands:
+All paths are resolved relative to the config file. The API generator commands are:
 
 ```bash
 lit-canon-api generate                          # write the client
@@ -47,6 +47,11 @@ lit-canon-api --help
 | ---------- | ------------------------------------------------------------------------------------- | ------------------------------------- |
 | `generate` | Generates in a temporary directory, then replaces the output directory.               | 1 on any error                        |
 | `check`    | Generates in a temporary directory and compares it with the output. Changes no files. | 1 for missing, changed or extra files |
+
+`lit-canon-api add-page` is a separate one-time application scaffold. It reads an
+already generated client, requires explicit query selection and route bindings,
+and creates editable files outside API output. See
+[prefetching and scaffolding](prefetching.md) for its flags and ownership rules.
 
 Without a command, or with an unknown one, the CLI prints its usage and exits with
 code 1. `-c` is short for `--config`; the default is `lit-canon-api.config.ts` in

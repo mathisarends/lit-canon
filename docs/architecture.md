@@ -37,6 +37,12 @@ The root generated `index.ts` exports one namespace per resource. Each resource 
 
 ## Source map: lit-canon-api
 
+`add-page` is a separate one-time application scaffold in
+[scaffold-page.ts](../packages/api/src/scaffold-page.ts). It reads the existing
+operation model and generated function inputs, requires explicit route bindings,
+and writes editable application files outside API output. See
+[decision 0002](decisions/0002-intent-prefetch-and-page-scaffolding.md).
+
 | File                                                           | Responsibility                                                                |
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | [index.ts](../packages/api/src/index.ts)                       | Public API: `generate`, `defineConfig` and the config types.                  |
@@ -59,6 +65,12 @@ runtime: configuration and header functions, query and body serialization, respo
 parsing and `ApiError`.
 
 ## Source map: lit-canon-composition
+
+[intent-prefetch.ts](../packages/composition/src/intent-prefetch.ts) handles intent
+at the app root; [app.ts](../packages/composition/src/app.ts) shares route matching
+and lazy loads with `app.prefetch`. The optional
+[query.ts](../packages/composition/src/query.ts) subpath adapts shared query options
+without adding a TanStack import to the core entrypoint.
 
 | File                                                     | Responsibility                                                |
 | -------------------------------------------------------- | ------------------------------------------------------------- |

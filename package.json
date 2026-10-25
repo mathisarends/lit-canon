@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.json",
     "example:generate": "pnpm -r build && node packages/api/dist/cli.js generate --config examples/catalog/lit-canon-api.config.ts",
     "example:check": "pnpm -r build && node packages/api/dist/cli.js check --config examples/catalog/lit-canon-api.config.ts",
+    "example:prefetch": "pnpm build && vite examples/catalog/prefetch",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -22,7 +23,9 @@
     "lit": "^3.3.3",
     "lit-canon-fetch": "workspace:*",
     "lit-canon-api": "workspace:*",
+    "lit-canon-composition": "workspace:*",
     "prettier": "3.9.9",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vite": "^8.3.5"
   }
 }

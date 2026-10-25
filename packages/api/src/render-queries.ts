@@ -5,6 +5,7 @@ interface OperationInput {
   name: string;
   optional: boolean;
   type: string;
+  sourceType: string;
 }
 
 interface RenderQueryOptions {
@@ -13,7 +14,7 @@ interface RenderQueryOptions {
   mutationOperations?: string[];
 }
 
-function operationInputs(source: string): Map<string, OperationInput[]> {
+export function operationInputs(source: string): Map<string, OperationInput[]> {
   const sourceFile = ts.createSourceFile("api.ts", source, ts.ScriptTarget.Latest, true);
   const inputs = new Map<string, OperationInput[]>();
 
@@ -44,6 +45,7 @@ function operationInputs(source: string): Map<string, OperationInput[]> {
         name: parameter.name.getText(sourceFile),
         optional: Boolean(parameter.questionToken),
         type: `Parameters<typeof ${name}>[${index}]`,
+        sourceType: parameter.type?.getText(sourceFile) ?? "unknown",
       })),
     );
   }
