@@ -21,6 +21,7 @@ Without configuration, requests use relative API paths and send cookies with
 | `credentials` | Default `RequestInit.credentials`; defaults to `"include"`.           |
 | `headers`     | Static `HeadersInit`, or a function that returns headers per request. |
 | `fetch`       | A custom `fetch` implementation, for example in tests.                |
+| `middleware`  | Functions that wrap every request; see [middleware](#middleware).     |
 
 `createApiFetch(config)` returns an independent `apiFetch` function with its own
 configuration, for a second API or for tests.
@@ -47,6 +48,40 @@ configureApiFetch({
 The `Promise<HeadersInit>` return annotation helps TypeScript when the branches
 return objects with different keys. Per-request headers override configured
 headers, and per-request credentials override the configured credentials.
+
+## Middleware
+
+Middleware wraps every request, with the first entry outermost. Each one receives the
+request (the full URL and the fetch options, with `method` upper-case and `headers`
+as a `Headers` object) and a `next` function. It can change the request, call `next`
+several times to retry, or return a `Response` without calling `next`. Responses are
+turned into data or `ApiError` after the middleware has finished.
+
+```ts
+import { configureApiFetch } from "lit-canon-fetch";
+
+configureApiFetch({
+  headers: async () => ({ authorization: `Bearer ${await getToken()}` }),
+  middleware: [
+    // Refresh an expired token once and repeat the request.
+    async (request, next) => {
+      const response = await next(request);
+      if (response.status !== 401) return response;
+      request.init.headers.set("authorization", `Bearer ${await refreshToken()}`);
+      return next(request);
+    },
+    async (request, next) => {
+      const started = performance.now();
+      const response = await next(request);
+      console.debug(request.init.method, request.url, response.status, performance.now() - started);
+      return response;
+    },
+  ],
+});
+```
+
+JSON, text, `Blob` and `FormData` bodies can be sent again on a retry; a
+`ReadableStream` body cannot.
 
 ## Requests and responses
 
@@ -101,7 +136,7 @@ Every `ApiError` from the runtime also carries the request and response details:
 
 | Property  | Content                                                                |
 | --------- | ---------------------------------------------------------------------- |
-| `url`     | The requested URL, including base URL and query string.                |
+| `url`     | The final response URL after redirects, otherwise the requested URL.   |
 | `method`  | The upper-case HTTP method.                                            |
 | `headers` | The response headers, for example `Retry-After` or `WWW-Authenticate`. |
 | `body`    | The raw response body text, also when it is not a problem object.      |

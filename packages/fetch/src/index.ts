@@ -70,7 +70,24 @@ export interface ApiFetchConfig {
     | HeadersInit
     | ((request: { url: string; method: string }) => HeadersInit | Promise<HeadersInit>);
   fetch?: typeof globalThis.fetch;
+  /**
+   * Wraps every request, first entry outermost. A middleware can change the request,
+   * retry it by calling `next` again, or return a response without calling `next`.
+   */
+  middleware?: ApiMiddleware[];
 }
+
+/** A request as middleware sees it: the final URL and mutable fetch options. */
+export interface ApiFetchRequest {
+  /** The full URL, including base URL and query string. */
+  url: string;
+  init: RequestInit & { method: string; headers: Headers };
+}
+
+export type ApiMiddleware = (
+  request: ApiFetchRequest,
+  next: (request: ApiFetchRequest) => Promise<Response>,
+) => Promise<Response>;
 
 const ABSOLUTE_URL = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
 
@@ -229,14 +246,25 @@ export function createApiFetch(config: ApiFetchConfig = {}) {
     const encodedBody = encodeBody(body, headers);
     const target = ABSOLUTE_URL.test(url) ? url : baseUrl + url;
     const send = config.fetch ?? globalThis.fetch;
-    const requestUrl = withQuery(target, query);
-    const response = await send(requestUrl, {
-      ...init,
-      credentials: init.credentials ?? config.credentials ?? "include",
-      headers,
-      body: encodedBody,
-    });
-    return readResponse<T>(response, method, requestUrl);
+    const request: ApiFetchRequest = {
+      url: withQuery(target, query),
+      init: {
+        ...init,
+        method,
+        credentials: init.credentials ?? config.credentials ?? "include",
+        headers,
+        body: encodedBody,
+      },
+    };
+    const run = (config.middleware ?? []).reduceRight<
+      (request: ApiFetchRequest) => Promise<Response>
+    >(
+      (next, middleware) => (current) => middleware(current, next),
+      (current) => send(current.url, current.init),
+    );
+    const response = await run(request);
+    // response.url is the final URL after redirects; it is empty for synthetic responses.
+    return readResponse<T>(response, method, response.url || request.url);
   };
 }
 

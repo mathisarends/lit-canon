@@ -241,3 +241,56 @@ test("throws ApiError for invalid JSON in a successful response", async () => {
     return true;
   });
 });
+
+test("runs middleware in order and lets it retry or answer requests", async () => {
+  const log: string[] = [];
+  let token = "old";
+  const sent: Array<{ url: string; authorization: string | null; body: unknown }> = [];
+  const request = createApiFetch({
+    baseUrl: "https://example.test",
+    headers: () => ({ authorization: `Bearer ${token}` }),
+    fetch: async (url, init) => {
+      const authorization = new Headers(init?.headers).get("authorization");
+      sent.push({ url: String(url), authorization, body: init?.body });
+      return authorization === "Bearer new"
+        ? new Response('{"ok":true}', { headers: { "content-type": "application/json" } })
+        : new Response(null, { status: 401 });
+    },
+    middleware: [
+      async (request, next) => {
+        log.push(`outer ${request.init.method} ${request.url}`);
+        const response = await next(request);
+        log.push(`outer ${response.status}`);
+        return response;
+      },
+      async (request, next) => {
+        const response = await next(request);
+        if (response.status !== 401) return response;
+        token = "new";
+        request.init.headers.set("authorization", `Bearer ${token}`);
+        return next(request);
+      },
+    ],
+  });
+  assert.deepEqual(await request("/me", { method: "patch", body: { a: 1 } }), { ok: true });
+  assert.deepEqual(sent, [
+    { url: "https://example.test/me", authorization: "Bearer old", body: '{"a":1}' },
+    { url: "https://example.test/me", authorization: "Bearer new", body: '{"a":1}' },
+  ]);
+  assert.deepEqual(log, ["outer PATCH https://example.test/me", "outer 200"]);
+
+  const cached = createApiFetch({
+    fetch: async () => assert.fail("fetch must not run"),
+    middleware: [async () => new Response("cached")],
+  });
+  assert.equal(await cached("/cached"), "cached");
+
+  const failing = createApiFetch({
+    fetch: async () => new Response(null, { status: 503 }),
+    middleware: [async (request, next) => next({ ...request, url: `${request.url}?retry=1` })],
+  });
+  await assert.rejects(
+    failing("/x"),
+    (error) => error instanceof ApiError && error.status === 503 && error.url === "/x",
+  );
+});
