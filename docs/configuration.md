@@ -8,7 +8,7 @@ The configuration types are defined in
 
 | Option                | Purpose / default                                                        |
 | --------------------- | ------------------------------------------------------------------------ |
-| `input`               | Required local OpenAPI 3 JSON file.                                      |
+| `input`               | Required OpenAPI 3 document: a JSON or YAML file, or an http(s) URL.     |
 | `output`              | Required directory owned by the generator.                               |
 | `workspace`           | Workspace passed to Orval; defaults to the config directory.             |
 | `request`             | Custom request module and its re-exports; defaults to `lit-canon-fetch`. |
@@ -37,7 +37,9 @@ export default defineConfig({
 });
 ```
 
-All paths are resolved relative to the config file. The API generator commands are:
+All paths are resolved relative to the config file. An `input` URL is downloaded on
+every run, so `check` compares against the current remote document. The API generator
+commands are:
 
 ```bash
 lit-canon-api generate                          # write the client

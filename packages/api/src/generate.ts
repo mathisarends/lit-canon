@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
 import { generate as generateOrval } from "orval";
 import * as prettier from "prettier";
+import { parse as parseYaml } from "yaml";
 import type { OpenAPIV3 } from "@scalar/openapi-types";
 import { validateConfig } from "./config.js";
 import type { CodegenConfig, GenerateOptions, GenerateResult } from "./config.js";
@@ -35,6 +36,34 @@ function resourceNamespace(tag: string): string {
   return tag.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
 }
 
+function isUrl(input: string): boolean {
+  return /^https?:\/\//i.test(input);
+}
+
+async function readInput(input: string): Promise<string> {
+  if (!isUrl(input)) {
+    return readFile(input, "utf8");
+  }
+  const response = await fetch(input);
+  if (!response.ok) {
+    throw new Error(`Could not fetch the OpenAPI input ${input}: HTTP ${response.status}`);
+  }
+  return response.text();
+}
+
+/** JSON documents start with "{"; anything else is read as YAML, a superset of JSON. */
+function isJson(source: string): boolean {
+  return source.trimStart().startsWith("{");
+}
+
+function parseInput(source: string, input: string): OpenAPIV3.Document {
+  try {
+    return (isJson(source) ? JSON.parse(source) : parseYaml(source)) as OpenAPIV3.Document;
+  } catch (error) {
+    throw new Error(`Could not parse the OpenAPI input ${input}`, { cause: error });
+  }
+}
+
 function importPath(fromDirectory: string, target: string): string {
   let path = relative(fromDirectory, target).split(sep).join("/");
   path = path.replace(/\.(?:[cm]?ts|[cm]?js)$/, "");
@@ -48,13 +77,14 @@ export async function generate(
   validateConfig(config);
   const cwd = resolve(options.cwd ?? process.cwd());
   const workspace = resolve(cwd, config.workspace ?? ".");
-  const input = resolve(cwd, config.input);
+  const remote = isUrl(config.input);
+  const input = remote ? config.input : resolve(cwd, config.input);
   const output = resolve(cwd, config.output);
   const requestPath = config.request ? resolve(cwd, config.request.path) : null;
   if (
     output === parse(output).root ||
     isWithin(output, cwd) ||
-    isWithin(output, input) ||
+    (!remote && isWithin(output, input)) ||
     (requestPath !== null && isWithin(output, requestPath))
   ) {
     throw new Error(`Output must be a dedicated generated directory: ${output}`);
@@ -70,9 +100,10 @@ export async function generate(
     }
   }
   const existing = await outputFiles(output, preserved);
-  const spec = JSON.parse(await readFile(input, "utf8")) as OpenAPIV3.Document;
+  const source = await readInput(input);
+  const spec = parseInput(source, input);
   if (!spec || !/^3\./.test(spec.openapi ?? "") || !spec.info || !spec.paths) {
-    throw new Error("Input must be an OpenAPI 3 JSON document with info and paths");
+    throw new Error("Input must be an OpenAPI 3 document with info and paths");
   }
   const { operationsByTag, sourceTags, allTags, mutationOperations } = collectOperations(
     spec,
@@ -120,6 +151,13 @@ export async function generate(
     if (!requestPath) {
       await writeFile(mutatorPath, mutatorStub);
     }
+    // Orval reads the same downloaded document instead of fetching it once per resource.
+    const orvalInput = remote
+      ? join(temp, isJson(source) ? "openapi.json" : "openapi.yaml")
+      : input;
+    if (remote) {
+      await writeFile(orvalInput, source);
+    }
     for (const tag of tags) {
       const resourceDir = join(staged, tag);
       const requestImport = requestPath
@@ -129,7 +167,7 @@ export async function generate(
       await generateOrval(
         {
           input: {
-            target: input,
+            target: orvalInput,
             filters:
               sourceTags.get(tag) === null
                 ? // The defaultTag resource: every operation without a tag.

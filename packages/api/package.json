@@ -43,7 +43,8 @@
     "jiti": "2.6.1",
     "orval": "8.38.0",
     "prettier": "3.9.9",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@scalar/openapi-types": "0.9.7",

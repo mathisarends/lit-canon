@@ -1,7 +1,10 @@
 import type { Options as PrettierOptions } from "prettier";
 
 export interface CodegenConfig {
-  /** Local OpenAPI 3 JSON file, relative to the configuration file. */
+  /**
+   * OpenAPI 3 document in JSON or YAML: a file relative to the configuration file, or an
+   * http(s) URL.
+   */
   input: string;
   /** Directory owned by the generator, relative to the configuration file. */
   output: string;

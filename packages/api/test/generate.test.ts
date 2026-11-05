@@ -3,9 +3,12 @@ import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 import ts from "typescript";
+import { stringify as stringifyYaml } from "yaml";
 import { generate } from "../dist/index.js";
 import { ApiError, configureApiFetch } from "lit-canon-fetch";
 import { openapi } from "./fixtures.ts";
@@ -795,4 +798,64 @@ test("generates typed header parameters that call-site headers can override", as
     "1",
     { "X-Tenant-Id": "t2" },
   ]);
+});
+
+test("reads YAML files and http(s) URLs like JSON files", async () => {
+  const directory = join(root, "input-formats");
+  await mkdir(directory);
+  const spec = openapi();
+  const jsonInput = join(directory, "openapi.json");
+  const yamlInput = join(directory, "openapi.yaml");
+  await writeFile(jsonInput, JSON.stringify(spec));
+  await writeFile(yamlInput, stringifyYaml(spec));
+  const fromJson = await generate({ input: jsonInput, output: join(directory, "json") });
+  const fromYaml = await generate({ input: yamlInput, output: join(directory, "yaml") });
+  assert.deepEqual(fromYaml.files, fromJson.files);
+  for (const file of fromJson.files) {
+    assert.equal(
+      await readFile(join(directory, "yaml", file), "utf8"),
+      await readFile(join(directory, "json", file), "utf8"),
+    );
+  }
+
+  let requests = 0;
+  const server = createServer((request, response) => {
+    requests += 1;
+    if (request.url === "/openapi.yaml") {
+      response.setHeader("content-type", "application/yaml");
+      response.end(stringifyYaml(spec));
+    } else {
+      response.statusCode = 404;
+      response.end();
+    }
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  try {
+    const { port } = server.address() as AddressInfo;
+    const fromUrl = await generate({
+      input: `http://127.0.0.1:${port}/openapi.yaml`,
+      output: join(directory, "url"),
+    });
+    // Orval reads the downloaded copy, so the document is fetched once.
+    assert.equal(requests, 1);
+    for (const file of fromJson.files) {
+      assert.equal(
+        await readFile(join(directory, "url", file), "utf8"),
+        await readFile(join(directory, "json", file), "utf8"),
+      );
+    }
+    assert.deepEqual(fromUrl.tags, fromJson.tags);
+    await assert.rejects(
+      generate({ input: `http://127.0.0.1:${port}/missing.json`, output: join(directory, "url") }),
+      /Could not fetch the OpenAPI input http:\/\/127\.0\.0\.1:\d+\/missing\.json: HTTP 404/,
+    );
+  } finally {
+    server.close();
+  }
+
+  await writeFile(yamlInput, "openapi: [");
+  await assert.rejects(
+    generate({ input: yamlInput, output: join(directory, "yaml") }),
+    /Could not parse the OpenAPI input/,
+  );
 });

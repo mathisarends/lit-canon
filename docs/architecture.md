@@ -15,8 +15,8 @@ The repository holds three independent packages. Two of them form the API layer:
 1. The CLI parses `generate` or `check`, loads the TypeScript config with Jiti and
    resolves paths relative to it. Removed options (`features`, `queryAliases`) fail
    here.
-2. `generate()` checks output ownership, reads the local OpenAPI JSON and collects
-   operations by tag. Each tag is one resource. It validates names and supported
+2. `generate()` checks output ownership, reads the OpenAPI document (a JSON or YAML
+   file, or a URL) and collects operations by tag. Each tag is one resource. It validates names and supported
    parameters.
 3. Orval generates a split fetch client for each tag in a temporary directory next
    to the output. The pinned Orval version determines the TypeScript shape the
