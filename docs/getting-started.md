@@ -73,26 +73,32 @@ directories owned by another generator.
 
 The checked-in [product catalog specification](../examples/catalog/openapi.json) contains:
 
-| OpenAPI operation                              | Generated request                       | Generated options                  |
-| ---------------------------------------------- | --------------------------------------- | ---------------------------------- |
-| `GET /products?limit=20` · `list_products`     | `listProducts({ limit: 20 })`           | `listProductsQuery({ limit: 20 })` |
-| `GET /products/{productId}` · `get_product`    | `getProduct("p-1")`                     | `getProductQuery("p-1")`           |
-| `POST /products` · `create_product`            | `createProduct({ name, price })`        | `createProductMutation()`          |
-| `PUT /products/{productId}` · `update_product` | `updateProduct("p-1", { name, price })` | `updateProductMutation()`          |
+| OpenAPI operation                              | Generated request                                     | Generated options                  |
+| ---------------------------------------------- | ----------------------------------------------------- | ---------------------------------- |
+| `GET /products?limit=20` · `list_products`     | `listProducts({ limit: 20 })`                         | `listProductsQuery({ limit: 20 })` |
+| `GET /products/{productId}` · `get_product`    | `getProduct({ productId: "p-1" })`                    | `getProductQuery({ productId })`   |
+| `POST /products` · `create_product`            | `createProduct({ body: { name, price } })`            | `createProductMutation()`          |
+| `PUT /products/{productId}` · `update_product` | `updateProduct({ productId, body: { name, price } })` | `updateProductMutation()`          |
 
 All four operations have the OpenAPI tag `products`. Each tag becomes a resource
 directory; `snake_case` operation IDs become `camelCase` function names. GET
 operations become queries; other HTTP methods become mutations.
+
+Every operation takes one input object, the same for the function, its query options
+and `mutate`. Path and query parameters are fields of that object, the request body
+is `body` and header parameters are `headers`. The input type is exported as
+`<Operation>Input`, for example `UpdateProductInput`.
 
 ```text
 generated/
   index.ts                   # exports the products namespace
   products/
     models.ts                # Product, ProductInput, ListProductsParams
-    api.ts                   # typed fetch functions
-    queries.ts               # productsKeys + query options
+    api.ts                   # typed fetch functions and their input types
+    keys.ts                  # query and mutation keys
+    queries.ts               # query options
     mutations.ts             # mutation options
-    index.ts                 # resource exports + runtime error types
+    index.ts                 # resource exports
 ```
 
 These are excerpts from the committed output, without the file headers. The linked
@@ -112,27 +118,48 @@ export interface Product {
 **[api.ts](../examples/catalog/generated/products/api.ts)**: a typed function you can call directly.
 
 ```ts
-export const listProducts = (
-  params?: ListProductsParams,
+export type UpdateProductInput = { productId: string; body: ProductInput };
+
+export const updateProduct = (
+  { productId, body }: UpdateProductInput,
   options?: ApiRequestOptions,
-): Promise<Product[]> =>
-  apiFetch<Product[]>("/products", { ...options, method: "GET", query: params });
+): Promise<Product> =>
+  apiFetch<Product>(
+    {
+      method: "PUT",
+      path: `/products/${encodeURIComponent(productId)}`,
+      body,
+      contentType: "application/json",
+    },
+    options,
+  );
 ```
 
-**[queries.ts](../examples/catalog/generated/products/queries.ts)**: a key factory and query options.
+**[keys.ts](../examples/catalog/generated/products/keys.ts)**: one key per operation.
 
 ```ts
-export const productsKeys = {
+export const keys = {
   all: ["products"] as const,
-  listProducts: (params?: ListProductsParams) =>
-    ["products", "listProducts", params ?? null] as const,
-  getProduct: (productId: string) => ["products", "getProduct", productId] as const,
+  listProducts: (input?: ListProductsInput) =>
+    input === undefined
+      ? (["products", "listProducts"] as const)
+      : (["products", "listProducts", input] as const),
+  // getProduct as above
+  createProduct: () => ["products", "createProduct"] as const,
+  updateProduct: () => ["products", "updateProduct"] as const,
 };
+```
 
-export const listProductsQuery = (params?: ListProductsParams, options?: ApiRequestOptions) =>
+Without an input, a query key is the prefix of every query of that operation:
+`keys.listProducts()` invalidates all product lists, whatever their parameters.
+
+**[queries.ts](../examples/catalog/generated/products/queries.ts)**: query options.
+
+```ts
+export const getProductQuery = (input: GetProductInput, options?: ApiRequestOptions) =>
   queryOptions({
-    queryKey: productsKeys.listProducts(params),
-    queryFn: ({ signal }) => listProducts(params, { ...options, signal }),
+    queryKey: keys.getProduct(input),
+    queryFn: ({ signal }) => getProduct(input, { ...options, signal }),
   });
 ```
 
@@ -141,25 +168,17 @@ API function. It is not part of the query key, and TanStack's abort signal repla
 any `signal` in it.
 
 **[mutations.ts](../examples/catalog/generated/products/mutations.ts)**: mutation
-options that take one object.
+options whose variables are the operation input.
 
 ```ts
-/** The variables passed to `mutate` for updateProduct. */
-export type UpdateProductVariables = { productId: string; request: ProductInput };
-
 export const updateProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
-    mutationKey: ["products", "updateProduct"] as const,
-    mutationFn: (variables: UpdateProductVariables) =>
-      updateProduct(variables.productId, variables.request, options),
+    mutationKey: keys.updateProduct(),
+    mutationFn: (input: UpdateProductInput) => updateProduct(input, options),
   });
 ```
 
-The properties are named after the parameters of the API function: path parameters
-by name, `params` for query parameters, `request` for the body and `headers` for
-header parameters. Call it with `mutate({ productId: "p-1", request: { name, price } })`.
-The exported `UpdateProductVariables` type names that object, for example in a helper
-that builds it.
+Call it with `mutate({ productId: "p-1", body: { name, price } })`.
 
 ## Use it in a Lit component
 
@@ -180,7 +199,7 @@ class ProductList extends LitElement {
   private readonly create = createMutationController(this, () => ({
     ...products.createProductMutation(),
     onSuccess: (_product, _variables, _onMutateResult, { client }) =>
-      client.invalidateQueries({ queryKey: products.productsKeys.all }),
+      client.invalidateQueries({ queryKey: products.keys.all }),
   }));
 
   override render() {
@@ -192,7 +211,7 @@ class ProductList extends LitElement {
       <ul>
         ${query.data.map((product) => html`<li>${product.name}</li>`)}
       </ul>
-      <button @click=${() => this.create.mutate({ request: { name: "Notebook", price: 12.5 } })}>
+      <button @click=${() => this.create.mutate({ body: { name: "Notebook", price: 12.5 } })}>
         Add
       </button>
     `;
@@ -204,7 +223,7 @@ customElements.define("product-list", ProductList);
 
 The data is inferred as `Product[]`. Options such as `staleTime` or `enabled` are
 spread next to the generated options. After a successful write, the mutation
-invalidates every `products` query through `productsKeys.all`, using the client
+invalidates every `products` query through `products.keys.all`, using the client
 TanStack passes to `onSuccess`.
 
 To provide the client:
@@ -216,8 +235,8 @@ To provide the client:
 
 ## Configure requests
 
-By default, requests use relative paths and include cookies. Configure the runtime
-once when your application starts:
+By default, requests use relative paths and send cookies only to the same origin.
+Configure the runtime once when your application starts:
 
 ```ts
 import { configureApiFetch } from "lit-canon-fetch";
@@ -252,6 +271,6 @@ files, as CI does. Making real requests requires a Lit app and a matching API.
 - [Configuration](configuration.md) for options and generation behavior.
 - [Runtime](runtime.md) for request defaults, errors and custom request modules.
 - [OpenAPI requirements](openapi.md) if generation rejects your specification.
-- [Migration](migration.md) if you are upgrading from the 0.x generator.
+- [Migration](migration.md) if you are upgrading from 1.x or the 0.x generator.
 
 [All documentation](README.md)

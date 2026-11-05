@@ -17,7 +17,7 @@ import { configureApiFetch } from "lit-canon-fetch";
 configureApiFetch({
   baseUrl: "https://api.example.com",
   // Static headers, or a sync or async function called before every request.
-  headers: async ({ url, method }): Promise<HeadersInit> => ({
+  headers: async ({ path, method }): Promise<HeadersInit> => ({
     authorization: `Bearer ${await session.token()}`,
   }),
 });
@@ -30,7 +30,7 @@ failures with `ApiError`:
 import { ApiError } from "lit-canon-fetch";
 
 try {
-  await products.getProduct("p-1");
+  await products.getProduct({ productId: "p-1" });
 } catch (error) {
   if (error instanceof ApiError && error.status === 404) {
     // error.problem holds the problem details, if the server sent any.
@@ -45,13 +45,14 @@ try {
 | `createApiFetch`    | An independent `apiFetch` with its own configuration                    |
 | `ApiError`          | Thrown for HTTP failures: `status`, `problem`, `url`, `headers`, `body` |
 | `ApiProblem`        | RFC 9457 problem details type                                           |
-| `ApiRequestOptions` | Request options: `fetch` options plus `body` and `query`                |
+| `ApiRequestOptions` | Per-call `fetch` options such as `headers` and `signal`                 |
+| `ApiRequest`        | The request object generated functions pass to `apiFetch`               |
 | `ApiFetchConfig`    | Configuration type                                                      |
 | `ApiMiddleware`     | Middleware type, e.g. for token refresh and retries                     |
 
 `null` and `undefined` query values are omitted, also inside arrays. Requests send
-cookies by default (`credentials: "include"`), also to a `baseUrl` on another
-origin; set `credentials: "same-origin"` when the API does not use cookies. See the
+cookies only to the same origin by default; set `credentials: "include"` for a
+cookie-based API on another origin. See the
 [runtime guide](https://github.com/mathisarends/lit-canon/blob/HEAD/docs/runtime.md)
 for details.
 

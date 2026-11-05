@@ -64,7 +64,7 @@ try {
     await readFile(join(root, "node_modules/lit-canon-fetch/package.json"), "utf8"),
   );
   assert.equal(runtimeManifest.dependencies, undefined, "lit-canon-fetch has no dependencies");
-  assert.equal(runtimeManifest.version, "1.0.0");
+  assert.equal(runtimeManifest.version, "2.0.0");
   const generatorManifest = await readFile(
     join(root, "node_modules/lit-canon-api/package.json"),
     "utf8",

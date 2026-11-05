@@ -14,15 +14,17 @@ Apps that use `lit-canon-api` follow these rules. Do not invent alternatives.
   `provide(queryClientContext, () => new QueryClient())` in `createApp`. Elsewhere:
   `QueryClientProvider`. Components and services never create a client.
 - **Controllers without a client argument.** Pass the generated options:
-  `createQueryController(this, () => products.getProductQuery(id))`.
+  `createQueryController(this, () => products.getProductQuery({ productId: id }))`.
 - **No `fetch` in components.** Server data comes from generated query and mutation
   options, or from generated API functions when no cache is involved.
-- **Query keys come from the key factory.** Invalidate with `<resource>Keys.all` or
-  `<resource>Keys.<operation>(...)`; never write key arrays by hand.
+- **Query keys come from the key factory.** Invalidate with `<resource>.keys.all`,
+  `<resource>.keys.<operation>()` for every query of one operation, or
+  `<resource>.keys.<operation>(input)` for one query; never write key arrays by hand.
 - **Invalidate in mutation callbacks with the client TanStack passes:**
-  `onSuccess: (_data, _variables, _result, { client }) => client.invalidateQueries({ queryKey: products.productsKeys.all })`.
-- **Mutations take one object**, named after the API function's parameters:
-  `mutate({ productId, request })`.
+  `onSuccess: (_data, _variables, _result, { client }) => client.invalidateQueries({ queryKey: products.keys.all })`.
+- **Every operation takes one input object**: path and query parameters as fields,
+  `body` for the request body, `headers` for header parameters. The same object goes
+  to the function, its query options and `mutate({ productId, body })`.
 - **Request defaults live in `configureApiFetch`**, called once at startup: base URL,
   credentials and headers. Auth headers use a (possibly async) header function.
 - **Call-site options stay at the call site**: spread `enabled`, `staleTime` or
@@ -55,11 +57,13 @@ The full example is in [Using the client in a lit-canon app](lit-canon.md).
   existing client intact. Keep ownership checks and symlink rejection in place.
 - `check` compares without replacing the client. Preserved output directories are
   excluded from comparison and kept during `generate`.
-- Each resource exports `<resource>Keys` with `all` plus one function per query.
-  Query keys are `[tag, operation, ...inputs]`, with `null` for omitted optional
-  inputs. Query factories forward TanStack's `AbortSignal`.
-- Mutation options take no variables for zero inputs and one object otherwise.
-- `features` and `queryAliases` stay removed and fail with a pointer to
+- Each resource exports `keys` from `keys.ts` with `all` plus one function per
+  operation. Query keys are `[tag, operation, input]`; without an input argument the
+  key is the `[tag, operation]` prefix. Mutation keys are `[tag, operation]`. Query
+  factories forward TanStack's `AbortSignal`.
+- Every operation takes one `<Operation>Input` object; operations without
+  parameters or body take none. Mutation variables are that input.
+- Options removed in 1.0 or renamed in 2.0 fail with a pointer to
   [migration](migration.md). Generated code contains no application code.
 - `lit-canon-fetch` omits `null` and `undefined` query values and has no
   dependencies. It stays independent of Orval and Node.js tooling.
@@ -69,7 +73,7 @@ The full example is in [Using the client in a lit-canon app](lit-canon.md).
   See [OpenAPI requirements](openapi.md).
 - Orval is pinned because the renderers depend on its generated AST. Treat an
   upgrade as a generator change and review the resulting output.
-- Out of scope for 1.0: infinite queries, runtime schema validation (such as Zod)
+- Out of scope for 2.0: infinite queries, runtime schema validation (such as Zod)
   and controller wrappers.
 
 ## Verify the change

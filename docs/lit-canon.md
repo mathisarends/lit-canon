@@ -54,7 +54,7 @@ export class ProductListPage extends LitElement {
   private readonly create = createMutationController(this, () => ({
     ...products.createProductMutation(),
     onSuccess: (_product, _variables, _onMutateResult, { client }) =>
-      client.invalidateQueries({ queryKey: products.productsKeys.all }),
+      client.invalidateQueries({ queryKey: products.keys.all }),
   }));
 
   override render() {
@@ -66,7 +66,7 @@ export class ProductListPage extends LitElement {
       <ul>
         ${list.data.map((product) => html`<li>${product.name}</li>`)}
       </ul>
-      <button @click=${() => this.create.mutate({ request: { name: "Notebook", price: 12.5 } })}>
+      <button @click=${() => this.create.mutate({ body: { name: "Notebook", price: 12.5 } })}>
         Add a notebook
       </button>
     `;
@@ -90,9 +90,10 @@ the page controller and the route's `prefetch` hook. The
   services never create a `QueryClient`.
 - **Components never hold the client.** Mutation callbacks receive it as
   `context.client`, the fourth argument of `onSuccess`, `onError` and `onSettled`.
-- **Invalidate with the key factory**: `<resource>Keys.all` for a whole resource,
-  `<resource>Keys.<operation>(...)` for one query. Do not write query keys by hand.
-- **Mutations take one object**, for example `{ productId, request }`.
+- **Invalidate with the key factory**: `<resource>.keys.all` for a whole resource,
+  `<resource>.keys.<operation>()` for every query of one operation and
+  `<resource>.keys.<operation>(input)` for one query. Do not write query keys by hand.
+- **Every operation takes one input object**, for example `{ productId, body }`.
 - **Request defaults belong in `configureApiFetch`**: base URL, credentials and
   headers, including async auth headers.
 - **Call-site options stay at the call site**: `enabled`, `staleTime`, `select` and

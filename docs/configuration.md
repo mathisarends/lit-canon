@@ -6,23 +6,23 @@ The configuration types are defined in
 
 ## Configuration options
 
-| Option                | Purpose / default                                                        |
-| --------------------- | ------------------------------------------------------------------------ |
-| `input`               | Required OpenAPI 3 document: a JSON or YAML file, or an http(s) URL.     |
-| `output`              | Required directory owned by the generator.                               |
-| `workspace`           | Workspace passed to Orval; defaults to the config directory.             |
-| `request`             | Custom request module and its re-exports; defaults to `lit-canon-fetch`. |
-| `excludeTags`         | Tags to leave out.                                                       |
-| `defaultTag`          | Resource for operations without a tag.                                   |
-| `mutationOperations`  | Operation IDs or function names to treat as mutations.                   |
-| `problems`            | By default, emit problem types for resources with problem responses.     |
-| `preserveDirectories` | Top-level output directories owned by another generator.                 |
-| `prettier`            | Overrides for the detected project Prettier configuration.               |
+| Option       | Purpose / default                                                                 |
+| ------------ | --------------------------------------------------------------------------------- |
+| `input`      | Required OpenAPI 3 document: a JSON or YAML file, or an http(s) URL.              |
+| `output`     | Required directory owned by the generator.                                        |
+| `workspace`  | Workspace passed to Orval; defaults to the config directory.                      |
+| `runtime`    | Package name or file path the client imports `apiFetch` from; `lit-canon-fetch`.  |
+| `tags`       | `exclude` leaves tags out; `fallback` names the resource for untagged operations. |
+| `operations` | Marks operations, by function name, as `"query"` or `"mutation"`.                 |
+| `problems`   | `"auto"` (default), `true` or `false`; see below.                                 |
+| `preserve`   | Top-level output directories owned by another generator.                          |
+| `prettier`   | Overrides for the detected project Prettier configuration.                        |
 
-The options `features` and `queryAliases` were removed in 1.0. A config that still
-sets them fails with an error pointing to the [migration guide](migration.md). Any
-other unknown option also fails, with a suggestion for likely typos such as
-`excludeTag`.
+`defineConfig` types the object as `CodegenConfig`, so a misspelled option fails the
+type check. The generator also checks options at runtime: unknown options fail with a
+suggestion for likely typos, and options removed in 1.0 or renamed in 2.0, such as
+`excludeTags`, fail with their replacement and a pointer to the
+[migration guide](migration.md).
 
 ## Run the generator
 
@@ -73,31 +73,38 @@ links prevent replacement. Resources and query or mutation files that are no lon
 needed are removed during the next run.
 
 If another generator shares the output directory, preserve its top-level
-directories with `preserveDirectories: ["rpc"]`. These trees are excluded from
+directories with `preserve: ["rpc"]`. These trees are excluded from
 `check` and moved intact during `generate`, including binary files and empty
 directories. They cannot overlap generated resources or contain symbolic links.
 Unlisted files still need a generator header.
 
 ## Project-specific options
 
-- `excludeTags`: omit tags such as `system`.
-- `defaultTag`: collect operations without a tag in one resource, such as `general`.
-  Without it, untagged operations fail.
-- `mutationOperations`: treat GET operations as mutations, for example an OAuth
-  start or callback. Accepts OpenAPI operation IDs or generated function names.
+- `runtime`: the module generated files import `apiFetch`, `ApiRequestOptions` and
+  `ApiError` from. A value starting with `.` or `/` is a file relative to the config;
+  anything else is a package name. See the
+  [runtime guide](runtime.md#custom-request-module).
+- `tags.exclude`: omit tags such as `system`. Accepts the OpenAPI tag or its resource
+  name.
+- `tags.fallback`: collect operations without a tag in one resource, such as
+  `general`. Without it, untagged operations fail.
+- `operations`: GET operations become queries and every other method becomes a
+  mutation. Override that per operation with its generated function name:
+  `{ startLogin: "mutation" }` for an OAuth start that must not be cached, or
+  `{ searchProducts: "query" }` for a POST that only reads data.
 - `problems`: emit operation and resource problem types from
-  `application/problem+json` responses. By default, only resources with problem
+  `application/problem+json` responses. With `"auto"`, only resources with problem
   responses get a `problems.ts` file. Set `true` to also generate `never` problem
   types for resources without them, or `false` to omit the helpers.
-- `preserveDirectories`: keep top-level output directories owned by another
-  generator, such as an RPC client.
+- `preserve`: keep top-level output directories owned by another generator, such as
+  an RPC client.
 
 Problem helpers support named local schema references, `oneOf` and `anyOf`,
 including locally referenced responses. For the `products` tag they export types
 such as `GetProductProblem`, `ProductsProblem` and `ProductsProblemCode`, and the
 guard `isProductsError`. Code types also work when some problem schemas omit
 `code`. Inline problem schemas require `problems: false` or extraction into
-`components.schemas`. A custom request module must export a generic `ApiError<P>`
+`components.schemas`. A custom runtime must export a generic `ApiError<P>`
 when these helpers are enabled. The guard accepts an `ApiError` only when it has a
 problem body and a status the resource documents with a problem response (`404`,
 `4XX` or `default`), and narrows `problem` to a non-null value. It does not validate
@@ -111,13 +118,13 @@ together.
 The config describes how to generate code, not how the application behaves at
 runtime. Decisions that depend on the session or the page are made in code:
 
-| Need                                    | Where                                                                    |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| Auth or other headers for every request | A headers function in [`configureApiFetch`](runtime.md#dynamic-headers). |
-| Headers for one direct call             | The last argument: `products.getProduct("p-1", { headers })`.            |
-| Run a query only when ready             | `enabled` at the call site, spread next to the generated options.        |
-| Invalidate a whole resource             | `<resource>Keys.all`, for example `products.productsKeys.all`.           |
-| Separate cached data per user           | Clear the query cache when the session changes.                          |
+| Need                                    | Where                                                                        |
+| --------------------------------------- | ---------------------------------------------------------------------------- |
+| Auth or other headers for every request | A headers function in [`configureApiFetch`](runtime.md#dynamic-headers).     |
+| Headers for one direct call             | The last argument: `products.getProduct({ productId: "p-1" }, { headers })`. |
+| Run a query only when ready             | `enabled` at the call site, spread next to the generated options.            |
+| Invalidate a whole resource             | `<resource>.keys.all`, for example `products.keys.all`.                      |
+| Separate cached data per user           | Clear the query cache when the session changes.                              |
 
 ## Programmatic API
 
@@ -135,6 +142,6 @@ For programmatic calls, paths resolve against `options.cwd`, which defaults to
 `generate()` returns the absolute output path, the resource tags and the generated
 file names.
 
-For custom request modules, see the [runtime guide](runtime.md#custom-request-module).
+For a custom runtime, see the [runtime guide](runtime.md#custom-request-module).
 
 [All documentation](README.md)

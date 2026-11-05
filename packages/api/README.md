@@ -29,7 +29,9 @@ pnpm lit-canon-api check   # fails if the committed client is out of date
 ```
 
 Each OpenAPI tag becomes one resource with a typed API, a key factory, query options
-and mutation options:
+and mutation options. Every operation takes one input object: path and query
+parameters as fields, `body` for the request body and `headers` for header
+parameters.
 
 ```ts
 import { createMutationController, createQueryController } from "@tanstack/lit-query";
@@ -40,10 +42,10 @@ catalog = createQueryController(this, () => products.listProductsQuery({ limit: 
 update = createMutationController(this, () => ({
   ...products.updateProductMutation(),
   onSuccess: (_data, _variables, _result, { client }) =>
-    client.invalidateQueries({ queryKey: products.productsKeys.all }),
+    client.invalidateQueries({ queryKey: products.keys.all }),
 }));
 
-update.mutate({ productId: "p-1", request: { name: "Notebook", price: 12.5 } });
+update.mutate({ productId: "p-1", body: { name: "Notebook", price: 12.5 } });
 ```
 
 See the [documentation](https://github.com/mathisarends/lit-canon/tree/HEAD/docs) for

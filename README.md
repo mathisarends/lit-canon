@@ -24,7 +24,7 @@ import { products } from "./api/generated";
 catalog = createQueryController(this, () => products.listProductsQuery({ limit: 20 }));
 
 // Invalidate with the generated key factory, never with hand-written keys.
-client.invalidateQueries({ queryKey: products.productsKeys.all });
+client.invalidateQueries({ queryKey: products.keys.all });
 ```
 
 ```ts
@@ -47,7 +47,7 @@ pnpm add lit-canon-fetch @tanstack/lit-query lit
 pnpm add -D lit-canon-api
 ```
 
-Then follow [getting started](docs/getting-started.md). Upgrading from
+Then follow [getting started](docs/getting-started.md). Upgrading from 1.x or
 `lit-query-codegen`? See the [migration guide](docs/migration.md).
 
 ## Documentation
