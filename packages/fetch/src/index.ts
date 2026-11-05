@@ -55,13 +55,15 @@ function withQuery(url: string, query: object = {}): string {
       }
     }
   }
-  if (!params.size) {
+  // URLSearchParams.size is missing in Safari < 17 and older Chromium and Firefox.
+  const search = params.toString();
+  if (!search) {
     return url;
   }
   const hashIndex = url.indexOf("#");
   const path = hashIndex === -1 ? url : url.slice(0, hashIndex);
   const hash = hashIndex === -1 ? "" : url.slice(hashIndex);
-  return `${path}${path.includes("?") ? "&" : "?"}${params}${hash}`;
+  return `${path}${path.includes("?") ? "&" : "?"}${search}${hash}`;
 }
 
 function isJsonBody(body: unknown): boolean {

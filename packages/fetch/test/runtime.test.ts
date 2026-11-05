@@ -167,3 +167,24 @@ test("lets fetch set the multipart content type for FormData bodies", async () =
   assert.equal(sent[1].get("content-type"), null);
   assert.equal(sent[2].get("content-type"), "application/json");
 });
+
+test("builds query strings without URLSearchParams.size", async (t) => {
+  // Older browsers do not implement size; the query must not be dropped there.
+  const descriptor = Object.getOwnPropertyDescriptor(URLSearchParams.prototype, "size");
+  Object.defineProperty(URLSearchParams.prototype, "size", {
+    configurable: true,
+    get: () => undefined,
+  });
+  t.after(() => {
+    if (descriptor) Object.defineProperty(URLSearchParams.prototype, "size", descriptor);
+  });
+  const urls: string[] = [];
+  const request = createApiFetch({
+    fetch: async (url) => {
+      urls.push(String(url));
+      return new Response(null, { status: 204 });
+    },
+  });
+  await request("/search", { query: { q: "lit" } });
+  assert.deepEqual(urls, ["/search?q=lit"]);
+});
