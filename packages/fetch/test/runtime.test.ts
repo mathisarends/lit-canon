@@ -226,3 +226,18 @@ test("attaches the URL, method, headers and raw body to ApiError", async () => {
   assert.equal(manual.body, "");
   assert.equal(manual.headers.get("x"), null);
 });
+
+test("throws ApiError for invalid JSON in a successful response", async () => {
+  const request = createApiFetch({
+    fetch: async () => new Response("{oops", { headers: { "content-type": "application/json" } }),
+  });
+  await assert.rejects(request("/broken"), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 200);
+    assert.equal(error.problem, null);
+    assert.equal(error.body, "{oops");
+    assert.equal(error.message, "Invalid JSON in GET response");
+    assert.ok(error.cause instanceof SyntaxError);
+    return true;
+  });
+});

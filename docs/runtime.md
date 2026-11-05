@@ -72,7 +72,9 @@ runtime.
 
 ## Handle HTTP errors
 
-Responses with a non-2xx status throw `ApiError`:
+Responses with a non-2xx status throw `ApiError`. A successful response that claims
+JSON but cannot be parsed also throws `ApiError`, with its status, a `SyntaxError` as
+`cause` and the raw text in `body`, so callers handle a single error type:
 
 ```ts
 import { ApiError } from "lit-canon-fetch";

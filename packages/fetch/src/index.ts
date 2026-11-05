@@ -201,7 +201,22 @@ async function readResponse<T>(response: Response, method: string, url: string):
   if (!text) {
     return undefined as T;
   }
-  return (json ? JSON.parse(text) : text) as T;
+  if (!json) {
+    return text as T;
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (cause) {
+    // Callers handle one error type for everything the server sends back.
+    throw new ApiError(response.status, null, {
+      url,
+      method,
+      headers: response.headers,
+      body: text,
+      message: `Invalid JSON in ${method} response`,
+      cause,
+    });
+  }
 }
 
 export function createApiFetch(config: ApiFetchConfig = {}) {
