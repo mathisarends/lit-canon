@@ -52,7 +52,8 @@ headers, and per-request credentials override the configured credentials.
 
 - **Query parameters** come from the `query` object. Arrays become repeated
   parameters. `null` and `undefined` are omitted, also inside arrays, so
-  `{ tag: ["a", null], page: undefined }` becomes `?tag=a`.
+  `{ tag: ["a", null], page: undefined }` becomes `?tag=a`. `Date` values are sent
+  as ISO 8601 strings.
 - **Bodies**: plain objects, arrays and `null` are sent as JSON with
   `content-type: application/json`, unless a content type is set. `FormData`, `Blob`
   and other native bodies are passed through. For `FormData`, any configured or

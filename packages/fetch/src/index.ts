@@ -44,14 +44,14 @@ export interface ApiFetchConfig {
 
 const ABSOLUTE_URL = /^(?:[a-z][a-z\d+.-]*:)?\/\//i;
 
-/** Appends query parameters before the fragment. Arrays repeat the key. */
+/** Appends query parameters before the fragment. Arrays repeat the key; dates use ISO 8601. */
 function withQuery(url: string, query: object = {}): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     for (const item of Array.isArray(value) ? value : [value]) {
       // null and undefined mean "not set" and are left out of the URL.
       if (item !== null && item !== undefined) {
-        params.append(key, String(item));
+        params.append(key, item instanceof Date ? item.toISOString() : String(item));
       }
     }
   }

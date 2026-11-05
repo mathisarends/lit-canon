@@ -188,3 +188,15 @@ test("builds query strings without URLSearchParams.size", async (t) => {
   await request("/search", { query: { q: "lit" } });
   assert.deepEqual(urls, ["/search?q=lit"]);
 });
+
+test("serializes Date query values as ISO 8601", async () => {
+  const urls: string[] = [];
+  const request = createApiFetch({
+    fetch: async (url) => {
+      urls.push(String(url));
+      return new Response(null, { status: 204 });
+    },
+  });
+  await request("/events", { query: { since: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)) } });
+  assert.deepEqual(urls, ["/events?since=2026-01-02T03%3A04%3A05.000Z"]);
+});
