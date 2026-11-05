@@ -69,6 +69,24 @@ function urlExpression(path: string, parameterNames: Set<string>): string {
   return "`" + template + "`";
 }
 
+/** Orval guards optional multipart fields before appending them. */
+function isFormDataAppend(statement: ts.Statement, sourceFile: ts.SourceFile): boolean {
+  if (ts.isBlock(statement)) {
+    return statement.statements.every((child) => isFormDataAppend(child, sourceFile));
+  }
+  if (ts.isIfStatement(statement)) {
+    return (
+      isFormDataAppend(statement.thenStatement, sourceFile) &&
+      (!statement.elseStatement || isFormDataAppend(statement.elseStatement, sourceFile))
+    );
+  }
+  return (
+    ts.isExpressionStatement(statement) &&
+    ts.isCallExpression(statement.expression) &&
+    statement.expression.expression.getText(sourceFile) === "formData.append"
+  );
+}
+
 function renderOperation(
   declaration: ts.VariableDeclaration,
   operation: Operation,
@@ -106,11 +124,7 @@ function renderOperation(
         continue;
       }
     }
-    if (
-      ts.isExpressionStatement(statement) &&
-      ts.isCallExpression(statement.expression) &&
-      statement.expression.expression.getText(sourceFile) === "formData.append"
-    ) {
+    if (isFormDataAppend(statement, sourceFile)) {
       setup.push(statement.getText(sourceFile));
       continue;
     }

@@ -18,6 +18,53 @@ const cli = resolve("dist/cli.js");
 
 let root: string;
 
+test("generates and executes multipart requests with optional fields", async () => {
+  const directory = join(root, "optional-multipart");
+  await mkdir(directory);
+  const spec = openapi();
+  const upload = spec.paths["/upload"]!.post!;
+  upload.requestBody = {
+    required: true,
+    content: {
+      "multipart/form-data": {
+        schema: {
+          type: "object",
+          required: ["file"],
+          properties: {
+            file: { type: "string", format: "binary" },
+            description: { type: "string" },
+            count: { type: "integer" },
+            active: { type: "boolean" },
+          },
+        },
+      },
+    },
+  };
+  spec.paths = { "/upload": { post: upload } };
+  const input = join(directory, "openapi.json");
+  await writeFile(input, JSON.stringify(spec));
+  const output = join(directory, "generated");
+  const result = await generate({ input, output });
+  assert.deepEqual(typecheck(output, result.files), []);
+  await compile(join(output, "files"), ["api"]);
+  const bodies: FormData[] = [];
+  configureApiFetch({
+    fetch: async (_url, init) => {
+      bodies.push(init!.body as FormData);
+      assert.equal(new Headers(init?.headers).has("content-type"), false);
+      return new Response(null, { status: 204 });
+    },
+  });
+  const { uploadFile } = await import(pathToFileURL(join(output, "files/api.js")).href);
+  const file = new Blob(["hello"]);
+  await uploadFile({ file });
+  assert.deepEqual([...bodies[0].keys()], ["file"]);
+  await uploadFile({ file, description: "", count: 0, active: false });
+  assert.equal(bodies[1].get("description"), "");
+  assert.equal(bodies[1].get("count"), "0");
+  assert.equal(bodies[1].get("active"), "false");
+});
+
 test("sends scalar JSON request bodies with the declared media type", async () => {
   const directory = join(root, "scalar-json");
   await mkdir(directory);

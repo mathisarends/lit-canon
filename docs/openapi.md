@@ -20,7 +20,8 @@ convert to the same name as a tagged resource. Each operation also needs
 a unique, explicit `operationId` in `snake_case` or `camelCase`. Local parameter
 references are supported. Bundle path-item references before generation.
 
-The transformation targets JSON and multipart fetch requests, scalar path parameters
+The transformation targets JSON and multipart fetch requests (including optional
+scalar multipart fields), scalar path parameters
 with `simple` serialization, query parameters with `form`/`explode: true`
 serialization and header parameters with `simple` serialization. Path identifiers
 such as `item_id`, `scope.id` and `class` use Orval's TypeScript naming rules.
