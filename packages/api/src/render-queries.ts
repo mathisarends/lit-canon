@@ -1,5 +1,6 @@
 import ts from "typescript";
 import type { Operations } from "./operation.js";
+import { upperFirst } from "./naming.js";
 
 interface OperationInput {
   name: string;
@@ -129,7 +130,7 @@ function modelImport(names: string[], models: Map<string, Set<string>>): string[
 }
 
 function variablesType(name: string): string {
-  return `${name[0].toUpperCase()}${name.slice(1)}Variables`;
+  return `${upperFirst(name)}Variables`;
 }
 
 function functionParameters(inputs: OperationInput[]): string {

@@ -7,6 +7,7 @@ import { validateConfig, type CodegenConfig } from "./config.js";
 import { hasErrorCode, isWithin } from "./files.js";
 import { collectOperations, identifier, operationName } from "./openapi.js";
 import { operationInputs } from "./render-queries.js";
+import { camel, pascal } from "./naming.js";
 
 export interface PageScaffoldOptions {
   /** Existing config paths and feature paths are relative to this directory. */
@@ -35,11 +36,6 @@ function pairs(values: string[], label: string): Map<string, string> {
   return entries;
 }
 
-const camel = (name: string) => name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase());
-const pascal = (name: string) => {
-  const value = camel(name);
-  return value[0].toUpperCase() + value.slice(1);
-};
 const modulePath = (from: string, to: string) => {
   const path = relative(dirname(from), to).split(sep).join("/");
   return path.startsWith(".") ? path : `./${path}`;

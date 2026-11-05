@@ -11,6 +11,7 @@ import { renderProblems } from "./render-problems.js";
 import { validateExports } from "./validate-exports.js";
 import { collectOperations, identifier } from "./openapi.js";
 import { hasErrorCode, isWithin, listFiles, outputFiles } from "./files.js";
+import { camel } from "./naming.js";
 
 /** Generated clients import this package unless the config names its own request module. */
 const defaultRequestModule = "lit-canon-fetch";
@@ -30,10 +31,6 @@ export function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T
 `;
 
 const tempPrefix = "lit-canon-api-";
-
-function resourceNamespace(tag: string): string {
-  return tag.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
-}
 
 function importPath(fromDirectory: string, target: string): string {
   let path = relative(fromDirectory, target).split(sep).join("/");
@@ -86,7 +83,7 @@ export async function generate(
     if (preserved.has(tag)) {
       throw new Error(`Generated resource conflicts with a preserved directory: ${tag}`);
     }
-    const namespace = identifier(resourceNamespace(tag), "resource namespace");
+    const namespace = identifier(camel(tag), "resource namespace");
     if (namespaces.has(namespace)) {
       throw new Error(`Duplicate resource namespace: ${namespace}`);
     }
@@ -200,7 +197,7 @@ export async function generate(
         await writeFile(join(resourceDir, "problems.ts"), await format(problems));
       }
       const { queries, mutations } = renderQueryFiles(tag, operations, apiSource, header, {
-        namespace: resourceNamespace(tag),
+        namespace: camel(tag),
         mutationOperations,
         requestImport,
       });
@@ -245,7 +242,7 @@ export async function generate(
     await writeFile(
       join(staged, "index.ts"),
       await format(
-        `${rootHeader}\n\n${tags.map((tag) => `export * as ${resourceNamespace(tag)} from "./${tag}";`).join("\n")}\n`,
+        `${rootHeader}\n\n${tags.map((tag) => `export * as ${camel(tag)} from "./${tag}";`).join("\n")}\n`,
       ),
     );
     const files = await listFiles(staged);
