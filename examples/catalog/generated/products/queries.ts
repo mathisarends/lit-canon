@@ -6,24 +6,22 @@
 import { queryOptions } from "@tanstack/lit-query";
 import type { ApiRequestOptions } from "lit-canon-fetch";
 
-import { listProducts, getProduct } from "./api";
-import type { ListProductsParams } from "./models";
+import { listProducts, getProduct, type ListProductsInput, type GetProductInput } from "./api";
 
 export const productsKeys = {
   all: ["products"] as const,
-  listProducts: (params?: ListProductsParams) =>
-    ["products", "listProducts", params ?? null] as const,
-  getProduct: (productId: string) => ["products", "getProduct", productId] as const,
+  listProducts: (input: ListProductsInput = {}) => ["products", "listProducts", input] as const,
+  getProduct: (input: GetProductInput) => ["products", "getProduct", input] as const,
 };
 
-export const listProductsQuery = (params?: ListProductsParams, options?: ApiRequestOptions) =>
+export const listProductsQuery = (input: ListProductsInput = {}, options?: ApiRequestOptions) =>
   queryOptions({
-    queryKey: productsKeys.listProducts(params),
-    queryFn: ({ signal }) => listProducts(params, { ...options, signal }),
+    queryKey: productsKeys.listProducts(input),
+    queryFn: ({ signal }) => listProducts(input, { ...options, signal }),
   });
 
-export const getProductQuery = (productId: string, options?: ApiRequestOptions) =>
+export const getProductQuery = (input: GetProductInput, options?: ApiRequestOptions) =>
   queryOptions({
-    queryKey: productsKeys.getProduct(productId),
-    queryFn: ({ signal }) => getProduct(productId, { ...options, signal }),
+    queryKey: productsKeys.getProduct(input),
+    queryFn: ({ signal }) => getProduct(input, { ...options, signal }),
   });

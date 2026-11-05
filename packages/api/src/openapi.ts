@@ -1,7 +1,8 @@
 import ts from "typescript";
+import { camelPathParamName } from "@orval/core";
 import type { OpenAPIV3 } from "@scalar/openapi-types";
 import type { CodegenConfig } from "./config.js";
-import type { Operation, Operations } from "./operation.js";
+import type { Operation, OperationParameter, Operations } from "./operation.js";
 import { resolveReference } from "./references.js";
 import { operationProblems } from "./render-problems.js";
 
@@ -71,6 +72,67 @@ function validateParameter(
       parameter.in !== "path",
     );
   }
+}
+
+/**
+ * Names a path parameter cannot take: generated functions destructure path parameters
+ * next to these fields and helpers.
+ */
+const reservedPathNames = new Set([
+  "body",
+  "headers",
+  "query",
+  "params",
+  "options",
+  "formData",
+  "apiFetch",
+  "encodeURIComponent",
+]);
+
+function isPlainString(
+  value: OpenAPIV3.SchemaObject | OpenAPIV3.ReferenceObject | undefined,
+  spec: OpenAPIV3.Document,
+): boolean {
+  if (!value) {
+    return false;
+  }
+  const schema = resolveReference(value, spec, "Schemas");
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+  return types.length === 1 && types[0] === "string" && !schema.enum;
+}
+
+/** Path and query parameters share one flat input object with `headers` and `body`. */
+function inputParameters(
+  parameters: OpenAPIV3.ParameterObject[],
+  spec: OpenAPIV3.Document,
+  hasBody: boolean,
+  context: string,
+): OperationParameter[] {
+  const fields = new Set<string>();
+  if (hasBody) fields.add("body");
+  if (parameters.some((parameter) => parameter.in === "header")) fields.add("headers");
+  return parameters.map((parameter) => {
+    const location = parameter.in as OperationParameter["in"];
+    const source = String(parameter.name);
+    // Orval prefixes reserved words, e.g. `_class`; the input field keeps the plain name.
+    const variable = location === "path" ? camelPathParamName(source) : undefined;
+    const name = variable === undefined || variable === `_${source}` ? source : variable;
+    if (location !== "header") {
+      if (fields.has(name) || (variable !== undefined && reservedPathNames.has(variable))) {
+        throw new Error(
+          `Parameter ${parameter.name} in ${context} conflicts with another input field or a generated name`,
+        );
+      }
+      fields.add(name);
+    }
+    return {
+      name,
+      ...(variable === undefined ? {} : { variable }),
+      in: location,
+      required: location === "path" || Boolean(parameter.required),
+      plainString: isPlainString(parameter.schema, spec),
+    };
+  });
 }
 
 export function identifier(name: string, label: string): string {
@@ -190,8 +252,13 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       operations.set(name, {
         path,
         method,
-        hasQuery: [...parameters.values()].some((parameter) => parameter.in === "query"),
-        hasHeaders: [...parameters.values()].some((parameter) => parameter.in === "header"),
+        parameters: inputParameters(
+          [...parameters.values()],
+          spec,
+          requestBody !== undefined,
+          `${method.toUpperCase()} ${path}`,
+        ),
+        bodyRequired: requestBody ? Boolean(requestBody.required) : undefined,
         jsonContentType: Object.keys(requestBody?.content ?? {}).find(
           (type) => type === "application/json" || type.endsWith("+json"),
         ),

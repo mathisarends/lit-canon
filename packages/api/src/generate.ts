@@ -162,7 +162,7 @@ export async function generate(
         workspace,
         { throwOnError: true, logLevel: "error" },
       );
-      const apiSource = renderApi(
+      const { source: apiSource, inputs } = renderApi(
         await readFile(join(resourceDir, "api.ts"), "utf8"),
         operations,
         header,
@@ -195,7 +195,7 @@ export async function generate(
       if (problems) {
         await writeFile(join(resourceDir, "problems.ts"), await format(problems));
       }
-      const { queries, mutations } = renderQueryFiles(tag, operations, apiSource, header, {
+      const { queries, mutations } = renderQueryFiles(tag, operations, inputs, header, {
         namespace: camel(tag),
         mutationOperations,
         requestImport,

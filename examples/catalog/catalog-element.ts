@@ -30,7 +30,7 @@ export class ProductCatalog extends LitElement {
       </ul>
       <button
         ?disabled=${creation.isPending}
-        @click=${() => this.createProduct.mutate({ request: { name: "Notebook", price: 12.5 } })}
+        @click=${() => this.createProduct.mutate({ body: { name: "Notebook", price: 12.5 } })}
       >
         Add a notebook
       </button>

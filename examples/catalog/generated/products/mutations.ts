@@ -6,24 +6,21 @@
 import { mutationOptions } from "@tanstack/lit-query";
 import type { ApiRequestOptions } from "lit-canon-fetch";
 
-import { createProduct, updateProduct } from "./api";
-import type { ProductInput } from "./models";
-
-/** The variables passed to `mutate` for createProduct. */
-export type CreateProductVariables = { request: ProductInput };
+import {
+  createProduct,
+  updateProduct,
+  type CreateProductInput,
+  type UpdateProductInput,
+} from "./api";
 
 export const createProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
     mutationKey: ["products", "createProduct"] as const,
-    mutationFn: (variables: CreateProductVariables) => createProduct(variables.request, options),
+    mutationFn: (input: CreateProductInput) => createProduct(input, options),
   });
-
-/** The variables passed to `mutate` for updateProduct. */
-export type UpdateProductVariables = { productId: string; request: ProductInput };
 
 export const updateProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
     mutationKey: ["products", "updateProduct"] as const,
-    mutationFn: (variables: UpdateProductVariables) =>
-      updateProduct(variables.productId, variables.request, options),
+    mutationFn: (input: UpdateProductInput) => updateProduct(input, options),
   });

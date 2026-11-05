@@ -6,7 +6,6 @@ import { isUrl, readInput, parseInput } from "./input.js";
 import { validateConfig, type CodegenConfig } from "./config.js";
 import { hasErrorCode, isWithin } from "./files.js";
 import { collectOperations, identifier, operationName } from "./openapi.js";
-import { operationInputs } from "./render-queries.js";
 import { camel, pascal } from "./naming.js";
 
 export interface PageScaffoldOptions {
@@ -176,31 +175,35 @@ export async function scaffoldPage(config: CodegenConfig, options: PageScaffoldO
     if (!resource || resource[1].get(name)!.method !== "get" || mutationOperations.includes(name)) {
       throw new Error(`Scaffold query must be an included read operation: ${id}`);
     }
-    const tag = resource[0];
-    const namespace = camel(tag);
-    const source = await readFile(resolve(generated, tag, "api.ts"), "utf8");
-    const inputs = operationInputs(source).inputs.get(name);
-    if (!inputs) throw new Error(`Generate the API client before scaffolding: ${name}`);
-    const args: string[] = [];
-    for (const input of inputs) {
-      const binding = `${key}.${input.name}`;
+    const operation = resource[1].get(name)!;
+    const namespace = camel(resource[0]);
+    if (operation.bodyRequired)
+      throw new Error(`Scaffold query ${id} needs a request body; write its options by hand`);
+    const fields: string[] = [];
+    for (const parameter of operation.parameters) {
+      const binding = `${key}.${parameter.name}`;
       const param = bindings.get(binding);
       if (param !== undefined) {
+        if (parameter.in === "header")
+          throw new Error(
+            `Binding ${binding} targets a header parameter; set headers in application code`,
+          );
         if (!params.includes(param))
           throw new Error(`Unknown route parameter in ${binding}: ${param}`);
-        if (input.sourceType !== "string")
+        if (!parameter.plainString)
           throw new Error(
             `Binding ${binding} needs a string API input; add other conversions in application code`,
           );
         usedBindings.add(binding);
-        args.push(`params.${param}`);
-      } else if (input.optional) args.push("undefined");
-      else throw new Error(`Missing --bind ${binding}=<route-param>`);
+        const property = /^[A-Za-z_$][\w$]*$/.test(parameter.name)
+          ? parameter.name
+          : JSON.stringify(parameter.name);
+        fields.push(`${property}: params.${param}`);
+      } else if (parameter.required) throw new Error(`Missing --bind ${binding}=<route-param>`);
     }
-    while (args.at(-1) === "undefined") args.pop();
     imports.add(namespace);
     members.push(
-      `${key}: queryOptions({ ...${namespace}.${name}Query(${args.join(", ")}), staleTime: 30_000 })`,
+      `${key}: queryOptions({ ...${namespace}.${name}Query(${fields.length ? `{ ${fields.join(", ")} }` : ""}), staleTime: 30_000 })`,
     );
   }
   for (const binding of bindings.keys())

@@ -7,34 +7,43 @@ import type { ListProductsParams, Product, ProductInput } from "./models";
 
 import { apiFetch, type ApiRequestOptions } from "lit-canon-fetch";
 
+export type ListProductsInput = ListProductsParams;
+
 export const listProducts = (
-  params?: ListProductsParams,
+  query: ListProductsInput = {},
   options?: ApiRequestOptions,
-): Promise<Product[]> =>
-  apiFetch<Product[]>({ method: "GET", path: "/products", query: params }, options);
+): Promise<Product[]> => apiFetch<Product[]>({ method: "GET", path: "/products", query }, options);
+
+export type CreateProductInput = { body: ProductInput };
 
 export const createProduct = (
-  request: ProductInput,
+  { body }: CreateProductInput,
   options?: ApiRequestOptions,
 ): Promise<Product> =>
   apiFetch<Product>(
-    { method: "POST", path: "/products", body: request, contentType: "application/json" },
+    { method: "POST", path: "/products", body, contentType: "application/json" },
     options,
   );
 
-export const getProduct = (productId: string, options?: ApiRequestOptions): Promise<Product> =>
+export type GetProductInput = { productId: string };
+
+export const getProduct = (
+  { productId }: GetProductInput,
+  options?: ApiRequestOptions,
+): Promise<Product> =>
   apiFetch<Product>({ method: "GET", path: `/products/${encodeURIComponent(productId)}` }, options);
 
+export type UpdateProductInput = { productId: string; body: ProductInput };
+
 export const updateProduct = (
-  productId: string,
-  request: ProductInput,
+  { productId, body }: UpdateProductInput,
   options?: ApiRequestOptions,
 ): Promise<Product> =>
   apiFetch<Product>(
     {
       method: "PUT",
       path: `/products/${encodeURIComponent(productId)}`,
-      body: request,
+      body,
       contentType: "application/json",
     },
     options,
