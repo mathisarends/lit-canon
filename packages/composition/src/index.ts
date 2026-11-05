@@ -8,4 +8,4 @@ export type { PageDef, PageParams, PrefetchContext } from "./page.js";
 export type { FeatureDef, Layout } from "./feature.js";
 export type { Guard, GuardResult } from "./guard.js";
 export type { ProviderDef, Container } from "./container.js";
-export type { AppOptions, App } from "./app.js";
+export type { AppOptions, App, NavigationError } from "./app.js";

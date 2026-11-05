@@ -24,6 +24,23 @@ export interface AppOptions {
   rootTagName?: string;
   /** E.g. `'Vizro'` turns a page title `'Browser 42'` into `'Browser 42 · Vizro'`. */
   baseTitle?: string;
+  /**
+   * Called when a navigation is aborted by an error, e.g. to show a toast or report it.
+   * Replaces the default `console.error`. The current page stays in both cases.
+   */
+  onNavigationError?: (error: NavigationError) => void;
+}
+
+/** A navigation that was aborted by an error. */
+export interface NavigationError {
+  /** `'guard'`: a guard threw. `'load'`: `load()` rejected. `'redirect-loop'`: too many redirects. */
+  reason: "guard" | "load" | "redirect-loop";
+  /** The page's path pattern, e.g. `/browsers/:id`. */
+  page: string;
+  /** The pathname being navigated to, e.g. `/browsers/42`. */
+  path: string;
+  /** The thrown value, or an `Error` describing the redirect loop. */
+  error: unknown;
 }
 
 export interface App {
@@ -126,6 +143,21 @@ export function createApp(options: AppOptions): App {
     if (full !== undefined) document.title = full;
   };
 
+  const reportError = (error: NavigationError, message: string) => {
+    if (!options.onNavigationError) {
+      // The redirect-loop error only repeats the message.
+      if (error.reason === "redirect-loop") console.error(message);
+      else console.error(message, error.error);
+      return;
+    }
+    try {
+      options.onNavigationError(error);
+    } catch (handlerError) {
+      // A failing handler must not break routing.
+      console.error(message, error.error, handlerError);
+    }
+  };
+
   /** Builds the router `enter` callback: guards → load → title → commit. */
   const enter =
     (page: PageDef | undefined) =>
@@ -150,13 +182,18 @@ export function createApp(options: AppOptions): App {
             result = await guard({ params, path, container });
           } catch (err) {
             if (stale()) return false;
-            console.error(errors.guardFailed(page.path), err);
+            reportError(
+              { reason: "guard", page: page.path, path, error: err },
+              errors.guardFailed(page.path),
+            );
             return cancel();
           }
           if (stale()) return false;
           if (isRedirect(result)) {
             if (nav.redirects >= MAX_REDIRECTS) {
-              console.error(errors.redirectLoop(result.to, MAX_REDIRECTS));
+              const message = errors.redirectLoop(result.to, MAX_REDIRECTS);
+              const error = new Error(message);
+              reportError({ reason: "redirect-loop", page: page.path, path, error }, message);
               return cancel();
             }
             const to = result.to;
@@ -182,7 +219,10 @@ export function createApp(options: AppOptions): App {
           await load(page);
         } catch (err) {
           if (stale()) return false;
-          console.error(errors.loadFailed(page.path), err);
+          reportError(
+            { reason: "load", page: page.path, path, error: err },
+            errors.loadFailed(page.path),
+          );
           return cancel();
         }
         if (stale()) return false;

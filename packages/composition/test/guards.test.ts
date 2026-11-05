@@ -163,3 +163,66 @@ describe("guards", () => {
     expect(location.pathname).toBe("/fast");
   });
 });
+
+describe("onNavigationError", () => {
+  it("receives guard, load and redirect-loop errors instead of console.error", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onNavigationError = vi.fn();
+    const failure = new Error("boom");
+    const chunk = new Error("chunk missing");
+    const { app, host } = await start({
+      onNavigationError,
+      features: [
+        feature(
+          page("/throws/:id", [() => Promise.reject(failure)]),
+          page("/loop", [() => redirect("/loop")]),
+        ),
+        defineFeature({
+          name: "lazy",
+          pages: [
+            definePage({ path: "/lazy", load: () => Promise.reject(chunk), render: () => html`` }),
+          ],
+        }),
+      ],
+    });
+    await app.navigate("/throws/1");
+    await app.navigate("/lazy");
+    await app.navigate("/loop");
+    expect(onNavigationError.mock.calls.map(([e]) => e)).toEqual([
+      { reason: "guard", page: "/throws/:id", path: "/throws/1", error: failure },
+      { reason: "load", page: "/lazy", path: "/lazy", error: chunk },
+      {
+        reason: "redirect-loop",
+        page: "/loop",
+        path: "/loop",
+        error: expect.objectContaining({
+          message: expect.stringContaining("more than 10 consecutive redirects"),
+        }),
+      },
+    ]);
+    expect(error).not.toHaveBeenCalled();
+    expect(text(host)).toContain("/ link");
+    error.mockRestore();
+  });
+
+  it("logs a failing handler and keeps the current page", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handlerError = new Error("handler");
+    const failure = new Error("boom");
+    const { app, host } = await start({
+      onNavigationError: () => {
+        throw handlerError;
+      },
+      features: [feature(page("/guarded", [() => Promise.reject(failure)]))],
+    });
+    await app.navigate("/guarded");
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('"/guarded"'),
+      failure,
+      handlerError,
+    );
+    expect(text(host)).toContain("/ link");
+    expect(location.pathname).toBe("/");
+    error.mockRestore();
+  });
+});

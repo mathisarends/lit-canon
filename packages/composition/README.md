@@ -151,7 +151,7 @@ Guards run sequentially, in declaration order, before `load`:
 - `false`: cancel. The current page stays. If the URL was already changed (e.g. by a link click), it is put back.
 - `redirect('/login')`: cancel and navigate to the target, **replacing** the history entry. Redirects are scheduled after the cancelled navigation, never started from inside it. After 10 consecutive redirects the navigation is aborted and an error is logged.
 
-A guard that throws is logged with `console.error` and cancels the navigation.
+A guard that throws is logged with `console.error` (or passed to `onNavigationError`) and cancels the navigation.
 
 ```ts
 export const requireAuth: Guard = ({ container, path }) =>
@@ -168,6 +168,14 @@ interface AppOptions {
   notFound?: () => TemplateResult; // default: empty template
   rootTagName?: string; // default: 'lit-canon-root'
   baseTitle?: string; // 'Browser 42' → 'Browser 42 · Example'
+  onNavigationError?: (error: NavigationError) => void; // default: console.error
+}
+
+interface NavigationError {
+  reason: "guard" | "load" | "redirect-loop";
+  page: string; // path pattern, e.g. '/browsers/:id'
+  path: string; // pathname being navigated to, e.g. '/browsers/42'
+  error: unknown; // the thrown value, or an Error describing the redirect loop
 }
 
 interface App {
@@ -182,6 +190,7 @@ interface App {
 
 - **Routes** are `features.flatMap(f => f.pages)`, matched in that order. `notFound` is the router's fallback.
 - **Entering a route:** guards → start `prefetch` and `load()` together → wait for `load()` → title → render. Data never blocks navigation. If `load` rejects, the error is logged with the page path and the navigation is cancelled. When several navigations overlap (say a slow async guard and a second click), the latest one wins.
+- **Navigation errors:** a throwing guard, a rejected `load` and a redirect loop are logged with `console.error`. With `onNavigationError`, they are passed to it instead, for example to show a message to the user. The current page stays either way.
 - **Titles:** set after `load`. With `baseTitle`: `"{title} · {baseTitle}"`. Without `title`: just `baseTitle`. Without both, `document.title` is left alone.
 - **Scrolling:** after a new route renders, the window scrolls to the top. Back/forward (`popstate`) and the initial load do not scroll.
 - **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon-composition adds no click handler.
