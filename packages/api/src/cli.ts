@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createJiti } from "jiti";
 import { generate, scaffoldPage } from "./index.js";
@@ -21,6 +22,8 @@ Options:
                 Paths in the config are resolved relative to it.
   -h, --help    Show this help.`;
 
+const commands = ["generate", "check", "add-page"];
+
 try {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
@@ -37,12 +40,25 @@ try {
   const [command, ...rest] = positionals;
   if (values.help) {
     console.log(usage);
-  } else if (!["generate", "check", "add-page"].includes(command) || rest.length) {
-    console.error(usage);
+  } else if (!commands.includes(command) || rest.length) {
+    const problem =
+      command === undefined
+        ? "Missing command."
+        : !commands.includes(command)
+          ? `Unknown command "${command}".`
+          : `Unexpected argument "${rest[0]}".`;
+    console.error(`lit-canon-api: ${problem}
+
+${usage}`);
     process.exitCode = 1;
   } else {
     const check = command === "check";
     const configPath = resolve(values.config);
+    if (!existsSync(configPath)) {
+      throw new Error(
+        `Config file not found: ${configPath}. Create lit-canon-api.config.ts or pass --config <file>.`,
+      );
+    }
     const jiti = createJiti(import.meta.url);
     const config = await jiti.import<CodegenConfig>(configPath, { default: true });
     if (command === "add-page") {

@@ -239,9 +239,18 @@ export default defineConfig({
   const help = await run(process.execPath, [cli, "--help"]);
   assert.match(help.stdout, /^Usage: lit-canon-api <command>/);
   assert.match(help.stdout, /lit-canon-api\.config\.ts/);
-  for (const args of [[], ["--check"], ["regenerate"], ["generate", "extra"]]) {
+  for (const [args, message] of [
+    [[], /Missing command\./],
+    [["--check"], /Unknown option '--check'/],
+    [["regenerate"], /Unknown command "regenerate"\./],
+    [["generate", "extra"], /Unexpected argument "extra"\./],
+    [["check", "--config", "missing.config.ts"], /Config file not found: .*missing\.config\.ts/],
+  ] as const) {
     await assert.rejects(run(process.execPath, [cli, ...args], { cwd: directory }), (error) => {
-      assert.match((error as { stderr: string }).stderr, /lit-canon-api|Usage/);
+      const { stderr } = error as { stderr: string };
+      assert.match(stderr, /^lit-canon-api: /);
+      assert.match(stderr, message);
+      assert.doesNotMatch(stderr, /Require stack/);
       return true;
     });
   }
