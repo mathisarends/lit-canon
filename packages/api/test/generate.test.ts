@@ -662,7 +662,7 @@ test("converts tags such as Title Case or PascalCase to resource directories", a
   await writeFile(input, JSON.stringify(spec));
   await assert.rejects(
     generate({ input, output }),
-    /OpenAPI tags "admin-panel" and "AdminPanel" both map to the resource admin-panel/,
+    /OpenAPI tag "admin-panel" and OpenAPI tag "AdminPanel" both map to the resource admin-panel/,
   );
   spec.paths["/admin"]!.get!.tags = ["Über Admin"];
   delete spec.paths["/admin"]!.post;
@@ -674,4 +674,48 @@ test("converts tags such as Title Case or PascalCase to resource directories", a
     generate({ input, output }),
     /tag cannot be used as a resource directory: 管理/,
   );
+});
+
+test("collects operations without a tag in the defaultTag resource", async () => {
+  const directory = join(root, "default-tag");
+  await mkdir(directory);
+  const spec = openapi();
+  delete spec.paths["/admin"]!.get!.tags;
+  spec.paths["/health"] = {
+    get: {
+      operationId: "get_health",
+      responses: {
+        200: { description: "OK", content: { "application/json": { schema: { type: "string" } } } },
+      },
+    },
+  };
+  const input = join(directory, "openapi.json");
+  const output = join(directory, "generated");
+  await writeFile(input, JSON.stringify(spec));
+  await assert.rejects(
+    generate({ input, output }),
+    /GET \/admin needs exactly one OpenAPI tag \(or set defaultTag\)/,
+  );
+  const result = await generate({ input, output, defaultTag: "General", excludeTags: ["system"] });
+  assert.deepEqual(result.tags, ["auth", "files", "general", "items"]);
+  const api = await readFile(join(output, "general/api.ts"), "utf8");
+  assert.match(api, /export const listAdmin/);
+  assert.match(api, /export const getHealth/);
+  assert.doesNotMatch(api, /listItems|ping/);
+  assert.match(
+    await readFile(join(output, "general/queries.ts"), "utf8"),
+    /all: \["general"\] as const/,
+  );
+  assert.deepEqual(typecheck(output, result.files), []);
+  await assert.rejects(
+    generate({ input, output, defaultTag: "Items" }),
+    /OpenAPI tag "items" and defaultTag "Items" both map to the resource items|defaultTag "Items" and OpenAPI tag "items" both map to the resource items/,
+  );
+  const excluded = await generate({
+    input,
+    output,
+    defaultTag: "general",
+    excludeTags: ["general", "system"],
+  });
+  assert.deepEqual(excluded.tags, ["auth", "files", "items"]);
 });

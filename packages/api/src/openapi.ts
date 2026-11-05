@@ -110,8 +110,13 @@ export function resourceName(tag: string): string {
 
 export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfig) {
   const operationsByTag = new Map<string, Operations>();
-  /** The original OpenAPI tags of each resource, used to filter Orval's input. */
-  const sourceTags = new Map<string, string>();
+  /**
+   * The original OpenAPI tag of each resource, used to filter Orval's input; null for
+   * the defaultTag resource, which holds the operations without a tag.
+   */
+  const sourceTags = new Map<string, string | null>();
+  /** Every tag in the input, so Orval can select the untagged operations. */
+  const allTags = new Set<string>();
   const names = new Set<string>();
   const excluded = new Set(config.excludeTags ?? []);
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
@@ -126,18 +131,28 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
         continue;
       }
       const operation = value as OpenAPIV3.OperationObject;
-      if (operation.tags?.length !== 1) {
-        throw new Error(`${method.toUpperCase()} ${path} needs exactly one OpenAPI tag`);
+      const operationTags = operation.tags ?? [];
+      operationTags.forEach((tag) => allTags.add(tag));
+      if (
+        operationTags.length > 1 ||
+        (operationTags.length === 0 && config.defaultTag === undefined)
+      ) {
+        throw new Error(
+          `${method.toUpperCase()} ${path} needs exactly one OpenAPI tag${operationTags.length ? "" : " (or set defaultTag)"}`,
+        );
       }
-      const [sourceTag] = operation.tags;
-      const tag = resourceName(sourceTag);
-      if (excluded.has(sourceTag) || excluded.has(tag)) {
+      const sourceTag = operationTags[0] ?? null;
+      const label = sourceTag ?? config.defaultTag!;
+      const tag = resourceName(label);
+      if (excluded.has(label) || excluded.has(tag)) {
         continue;
       }
       const previousTag = sourceTags.get(tag);
       if (previousTag !== undefined && previousTag !== sourceTag) {
+        const describe = (value: string | null) =>
+          value === null ? `defaultTag "${config.defaultTag}"` : `OpenAPI tag "${value}"`;
         throw new Error(
-          `OpenAPI tags "${previousTag}" and "${sourceTag}" both map to the resource ${tag}`,
+          `${describe(previousTag)} and ${describe(sourceTag)} both map to the resource ${tag}`,
         );
       }
       sourceTags.set(tag, sourceTag);
@@ -174,5 +189,5 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       throw new Error(`Configured mutation has no included operation: ${name}`);
     }
   }
-  return { operationsByTag, sourceTags, mutationOperations };
+  return { operationsByTag, sourceTags, allTags: [...allTags], mutationOperations };
 }

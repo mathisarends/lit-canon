@@ -5,13 +5,18 @@ error. The [catalog specification](../examples/catalog/openapi.json) is a minima
 
 ## The contract
 
-Each included operation must have exactly one tag. The tag is the resource name:
+Each included operation must have exactly one tag, or none when `defaultTag` is set
+(see below). The tag is the resource name:
 `user-settings` becomes the `userSettings` namespace with a `userSettingsKeys`
 factory and query keys starting with `"user-settings"`. Other spellings are converted
 to that form: `User Settings`, `UserSettings` and `user_settings` all become
 `user-settings`, and accents are dropped (`Über` becomes `uber`). Two tags that
 convert to the same resource fail. `excludeTags` accepts the original or the
-converted name. Each operation also needs
+converted name.
+
+Operations without a tag fail unless the config sets `defaultTag`, for example
+`defaultTag: "general"`. These operations then form that resource. It must not
+convert to the same name as a tagged resource. Each operation also needs
 a unique, explicit `operationId` in `snake_case` or `camelCase`. Local parameter
 references are supported. Bundle path-item references before generation.
 
@@ -35,7 +40,7 @@ response bodies against the schema.
 
 | Error / symptom                                  | What to check                                                                                                          |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| An operation needs exactly one tag               | Give each operation one resource tag, including excluded operations.                                                   |
+| An operation needs exactly one tag               | Give each operation one resource tag, including excluded operations, or set `defaultTag` for untagged ones.            |
 | A tag cannot be used as a directory              | Use a tag that starts with a Latin letter after conversion, such as `User Settings`.                                   |
 | Two tags map to the same resource                | Use one spelling per resource, for example only `Users` or only `users`.                                               |
 | Duplicate operation name or export               | Check for IDs that normalize to the same name, such as `get_product` and `getProduct`, and clashes with key factories. |

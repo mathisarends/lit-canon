@@ -14,6 +14,8 @@ export interface CodegenConfig {
     typeExports?: string[];
   };
   excludeTags?: string[];
+  /** Resource for operations without an OpenAPI tag; without it, such operations fail. */
+  defaultTag?: string;
   /** Top-level output directories owned by another generator, e.g. ["rpc"]. */
   preserveDirectories?: string[];
   /** Defaults to resources with problem responses. true also emits empty problem types. */
@@ -46,6 +48,7 @@ const knownOptions: ReadonlyArray<keyof CodegenConfig> = [
   "workspace",
   "request",
   "excludeTags",
+  "defaultTag",
   "preserveDirectories",
   "problems",
   "mutationOperations",
@@ -77,6 +80,9 @@ export function validateConfig(config: CodegenConfig): void {
     if (Object.hasOwn(config, option)) {
       throw new Error(`"${option}" was removed in lit-canon-api 1.0. See docs/migration.md.`);
     }
+  }
+  if (config.defaultTag !== undefined && typeof config.defaultTag !== "string") {
+    throw new Error("defaultTag must be a string");
   }
   // defineConfig's generic signature does not reject unknown keys, so check at runtime.
   for (const option of Object.keys(config)) {

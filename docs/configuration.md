@@ -13,6 +13,7 @@ The configuration types are defined in
 | `workspace`           | Workspace passed to Orval; defaults to the config directory.             |
 | `request`             | Custom request module and its re-exports; defaults to `lit-canon-fetch`. |
 | `excludeTags`         | Tags to leave out.                                                       |
+| `defaultTag`          | Resource for operations without a tag.                                   |
 | `mutationOperations`  | Operation IDs or function names to treat as mutations.                   |
 | `problems`            | By default, emit problem types for resources with problem responses.     |
 | `preserveDirectories` | Top-level output directories owned by another generator.                 |
@@ -73,6 +74,8 @@ Unlisted files still need a generator header.
 ## Project-specific options
 
 - `excludeTags`: omit tags such as `system`.
+- `defaultTag`: collect operations without a tag in one resource, such as `general`.
+  Without it, untagged operations fail.
 - `mutationOperations`: treat GET operations as mutations, for example an OAuth
   start or callback. Accepts OpenAPI operation IDs or generated function names.
 - `problems`: emit operation and resource problem types from

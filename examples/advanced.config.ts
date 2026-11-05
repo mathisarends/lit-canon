@@ -7,6 +7,8 @@ export default defineConfig({
   output: "./src/api/generated",
   // Leave out operations the app never calls, such as health checks.
   excludeTags: ["system"],
+  // Operations without an OpenAPI tag form the "general" resource.
+  defaultTag: "general",
   // GET operations that change state and must not be cached or refetched.
   mutationOperations: ["start_login", "complete_login"],
   // Emit problem types for every resource, even those without problem responses.
