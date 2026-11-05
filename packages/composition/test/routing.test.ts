@@ -24,6 +24,31 @@ const plain = defineFeature({
 const notFound = () => html`<p>not found</p>`;
 
 describe("routing", () => {
+  it("resolves relative navigation and redirect targets before changing history", async () => {
+    const { redirect } = await import("../src/index.js");
+    const { app, host } = await start({
+      features: [
+        defineFeature({
+          name: "relative",
+          pages: [
+            definePage({ path: "/", render: () => html`home` }),
+            definePage({ path: "/items/:id", render: ({ id }) => html`item ${id}` }),
+            definePage({
+              path: "/go",
+              guards: [() => redirect("items/7?tab=info#top")],
+              render: () => html``,
+            }),
+          ],
+        }),
+      ],
+    });
+    await app.navigate("items/42?tab=info#top");
+    expect(text(host)).toBe("item 42");
+    expect(location.pathname + location.search + location.hash).toBe("/items/42?tab=info#top");
+    await app.navigate("../go");
+    expect(text(host)).toBe("item 7");
+    expect(location.pathname + location.search + location.hash).toBe("/items/7?tab=info#top");
+  });
   it("decodes route inputs once for guards, prefetch, title and render", async () => {
     const guard = vi.fn((_ctx: { params: Record<string, string | undefined> }) => true);
     const prefetch = vi.fn();

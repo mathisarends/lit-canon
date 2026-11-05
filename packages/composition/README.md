@@ -200,6 +200,7 @@ interface App {
 - **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon-composition adds no click handler.
 - `start()` appends the root element and routes the current URL. The root element renders into light DOM, so global styles reach layouts and pages.
 - `navigate(path)` does `history.pushState` and routes. It resolves once the navigation, including any redirects, has rendered. `path` may include a query string and hash.
+  Relative navigation and redirect targets resolve against the current URL before history changes.
 
 ## Not included (v1)
 

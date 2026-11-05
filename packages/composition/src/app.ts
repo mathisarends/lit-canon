@@ -174,7 +174,6 @@ export function createApp(options: AppOptions): App {
   let redirectTask: Promise<void> | undefined;
 
   const currentUrl = () => location.pathname + location.search + location.hash;
-  const pathnameOf = (path: string) => new URL(path, location.href).pathname;
 
   const setTitle = (title: string | undefined) => {
     const full =
@@ -239,13 +238,14 @@ export function createApp(options: AppOptions): App {
               return cancel();
             }
             const to = result.to;
+            const target = new URL(to, location.href);
             // Never start a navigation from inside `enter`; schedule it after this one is cancelled.
             redirectTask = new Promise((resolve) =>
               queueMicrotask(() => {
                 if (stale() || !root) return resolve();
-                history.replaceState(null, "", to);
+                history.replaceState(null, "", target.href);
                 intent = { ...nav, redirects: nav.redirects + 1 };
-                resolve(root.router.goto(pathnameOf(to)));
+                resolve(root.router.goto(target.pathname));
               }),
             );
             return false;
@@ -359,9 +359,10 @@ export function createApp(options: AppOptions): App {
     },
     async navigate(path) {
       if (!root) throw errors.notStarted();
-      history.pushState({}, "", path);
+      const target = new URL(path, location.href);
+      history.pushState({}, "", target.href);
       intent = DEFAULT_INTENT;
-      await root.router.goto(pathnameOf(path));
+      await root.router.goto(target.pathname);
       while (redirectTask) {
         const task = redirectTask;
         redirectTask = undefined;
