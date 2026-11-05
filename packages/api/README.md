@@ -3,7 +3,7 @@
 Generate a typed API client, query-key factories and
 [TanStack Lit Query](https://tanstack.com/query/latest/docs/framework/lit/overview)
 options from an OpenAPI 3 document. Generated code runs on
-[lit-canon-fetch](https://github.com/mathisarends/lit-canon/tree/main/packages/fetch).
+[lit-canon-fetch](https://github.com/mathisarends/lit-canon/tree/HEAD/packages/fetch).
 
 ```bash
 pnpm add lit-canon-fetch @tanstack/lit-query lit
@@ -46,7 +46,7 @@ update = createMutationController(this, () => ({
 update.mutate({ productId: "p-1", request: { name: "Notebook", price: 12.5 } });
 ```
 
-See the [documentation](https://github.com/mathisarends/lit-canon/tree/main/docs) for
+See the [documentation](https://github.com/mathisarends/lit-canon/tree/HEAD/docs) for
 configuration, the OpenAPI contract and the generated code.
 
 ## Page scaffolding

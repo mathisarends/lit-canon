@@ -7,7 +7,7 @@
     "url": "git+https://github.com/mathisarends/lit-canon.git",
     "directory": "packages/fetch"
   },
-  "homepage": "https://github.com/mathisarends/lit-canon/tree/main/packages/fetch#readme",
+  "homepage": "https://github.com/mathisarends/lit-canon/tree/HEAD/packages/fetch#readme",
   "bugs": {
     "url": "https://github.com/mathisarends/lit-canon/issues"
   },

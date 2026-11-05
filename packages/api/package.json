@@ -7,7 +7,7 @@
     "url": "git+https://github.com/mathisarends/lit-canon.git",
     "directory": "packages/api"
   },
-  "homepage": "https://github.com/mathisarends/lit-canon/tree/main/packages/api#readme",
+  "homepage": "https://github.com/mathisarends/lit-canon/tree/HEAD/packages/api#readme",
   "bugs": {
     "url": "https://github.com/mathisarends/lit-canon/issues"
   },

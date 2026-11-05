@@ -9,7 +9,7 @@
     "url": "git+https://github.com/mathisarends/lit-canon.git",
     "directory": "packages/composition"
   },
-  "homepage": "https://github.com/mathisarends/lit-canon/tree/main/packages/composition#readme",
+  "homepage": "https://github.com/mathisarends/lit-canon/tree/HEAD/packages/composition#readme",
   "bugs": {
     "url": "https://github.com/mathisarends/lit-canon/issues"
   },
