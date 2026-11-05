@@ -17,8 +17,9 @@ import { camel } from "./naming.js";
 const defaultRequestModule = "lit-canon-fetch";
 
 /**
- * Orval reads the apiFetch signature from a mutator file. renderApi rewrites the generated
- * import, so this stub only has to match the signature exported by lit-canon-fetch.
+ * Orval reads the apiFetch signature from a mutator file. renderApi rewrites every call
+ * and the import, so this stub only has to produce Orval's (url, options) call shape,
+ * whichever runtime the generated client uses.
  */
 const mutatorStub = `export type ApiRequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -120,10 +121,8 @@ export async function generate(
   await mkdir(staged);
   let cleanup = true;
   try {
-    const mutatorPath = requestPath ?? join(temp, "mutator.ts");
-    if (!requestPath) {
-      await writeFile(mutatorPath, mutatorStub);
-    }
+    const mutatorPath = join(temp, "mutator.ts");
+    await writeFile(mutatorPath, mutatorStub);
     // Orval reads the same downloaded document instead of fetching it once per resource.
     const orvalInput = remote
       ? join(temp, isJson(source) ? "openapi.json" : "openapi.yaml")

@@ -11,14 +11,15 @@ test("serializes JSON primitives while preserving native text bodies", async () 
     },
   });
   for (const body of ["hello", 42, false, null]) {
-    await request("/json", {
+    await request({
       method: "POST",
+      path: "/json",
       body,
-      headers: { "content-type": "application/merge-patch+json" },
+      contentType: "application/merge-patch+json",
     });
     assert.equal(bodies.at(-1), JSON.stringify(body));
   }
-  await request("/text", { method: "POST", body: "hello" });
+  await request({ method: "POST", path: "/text", body: "hello" });
   assert.equal(bodies.at(-1), "hello");
 });
 
@@ -35,14 +36,15 @@ test("serializes query, JSON and multipart requests and forwards overrides", asy
   });
   const signal = new AbortController().signal;
   assert.deepEqual(
-    await request("/items?sort=id#top", {
-      method: "POST",
-      body: { name: "item" },
-      query: { tag: ["a", null, "b", undefined], absent: undefined, nullable: null },
-      headers: { "x-default": "override" },
-      credentials: "omit",
-      signal,
-    }),
+    await request(
+      {
+        method: "POST",
+        path: "/items?sort=id#top",
+        body: { name: "item" },
+        query: { tag: ["a", null, "b", undefined], absent: undefined, nullable: null },
+      },
+      { headers: { "x-default": "override" }, credentials: "omit", signal },
+    ),
     { ok: true },
   );
   assert.equal(requests[0].url, "https://example.test/items?sort=id&tag=a&tag=b#top");
@@ -53,7 +55,7 @@ test("serializes query, JSON and multipart requests and forwards overrides", asy
   assert.equal(requests[0].init.signal, signal);
   const body = new FormData();
   body.append("file", new Blob(["hello"]), "hello.txt");
-  await request("https://uploads.test/file", { method: "POST", body });
+  await request({ method: "POST", path: "https://uploads.test/file", body });
   assert.equal(requests[1].url, "https://uploads.test/file");
   assert.equal(requests[1].init.body, body);
   assert.equal(new Headers(requests[1].init.headers).get("content-type"), null);
@@ -61,10 +63,16 @@ test("serializes query, JSON and multipart requests and forwards overrides", asy
 
 test("handles empty responses, text and problem details, including invalid error bodies", async () => {
   const respond = (response: Response) => createApiFetch({ fetch: async () => response });
-  assert.equal(await respond(new Response(null, { status: 204 }))("/empty"), undefined);
-  assert.equal(await respond(new Response("plain"))("/text"), "plain");
+  assert.equal(
+    await respond(new Response(null, { status: 204 }))({ method: "GET", path: "/empty" }),
+    undefined,
+  );
+  assert.equal(await respond(new Response("plain"))({ method: "GET", path: "/text" }), "plain");
   // Not read for HEAD in any letter case.
-  assert.equal(await respond(new Response("ignored"))("/head", { method: "head" }), undefined);
+  assert.equal(
+    await respond(new Response("ignored"))({ method: "head", path: "/head" }),
+    undefined,
+  );
   const problem = { type: "about:blank", title: "Forbidden", status: 403, detail: "No access" };
   await assert.rejects(
     respond(
@@ -72,7 +80,7 @@ test("handles empty responses, text and problem details, including invalid error
         status: 403,
         headers: { "content-type": "application/problem+json" },
       }),
-    )("/forbidden"),
+    )({ method: "GET", path: "/forbidden" }),
     (error) => {
       assert.ok(error instanceof ApiError);
       assert.equal(error.status, 403);
@@ -87,13 +95,13 @@ test("handles empty responses, text and problem details, including invalid error
         status: 500,
         headers: { "content-type": "application/json" },
       }),
-    )("/failure"),
+    )({ method: "GET", path: "/failure" }),
     (error: unknown) => error instanceof ApiError && error.status === 500 && error.problem === null,
   );
 });
 
-test("calls a header function per request with the client path and method", async () => {
-  const calls: Array<{ url: string; method: string }> = [];
+test("calls a header function per request with the path and method", async () => {
+  const calls: Array<{ path: string; method: string }> = [];
   const sent: Headers[] = [];
   const respond = async (_url: RequestInfo | URL, init?: RequestInit) => {
     sent.push(new Headers(init?.headers));
@@ -104,18 +112,18 @@ test("calls a header function per request with the client path and method", asyn
     fetch: respond,
     headers: (request): HeadersInit => {
       calls.push(request);
-      return request.url.startsWith("/admin")
+      return request.path.startsWith("/admin")
         ? { "x-admin-token": "secret", "x-shared": "config" }
         : {};
     },
   });
-  await sync("/admin/users", { method: "delete", query: { page: 2 } });
-  await sync("/items");
-  await sync("/admin/users", { headers: { "x-shared": "request" } });
+  await sync({ method: "delete", path: "/admin/users", query: { page: 2 } });
+  await sync({ method: "GET", path: "/items" });
+  await sync({ method: "GET", path: "/admin/users" }, { headers: { "x-shared": "request" } });
   assert.deepEqual(calls, [
-    { url: "/admin/users", method: "DELETE" },
-    { url: "/items", method: "GET" },
-    { url: "/admin/users", method: "GET" },
+    { path: "/admin/users", method: "DELETE" },
+    { path: "/items", method: "GET" },
+    { path: "/admin/users", method: "GET" },
   ]);
   assert.equal(sent[0].get("x-admin-token"), "secret");
   assert.equal(sent[1].get("x-admin-token"), null);
@@ -126,8 +134,8 @@ test("calls a header function per request with the client path and method", asyn
     fetch: respond,
     headers: async () => ({ authorization: `Bearer ${++token}` }),
   });
-  await async("/one");
-  await async("/two", { headers: { authorization: "Bearer override" } });
+  await async({ method: "GET", path: "/one" });
+  await async({ method: "GET", path: "/two" }, { headers: { authorization: "Bearer override" } });
   assert.equal(sent[3].get("authorization"), "Bearer 1");
   assert.equal(sent[4].get("authorization"), "Bearer override");
   assert.equal(token, 2);
@@ -141,9 +149,10 @@ test("omits null and undefined query values, including array elements", async ()
       return new Response(null, { status: 204 });
     },
   });
-  await request("/search", { query: { q: null, page: undefined } });
-  await request("/search", { query: { ids: [null, undefined], empty: "" } });
-  await request("/search", { query: { ids: [1, null, 0, undefined, false] } });
+  const search = (query: object) => request({ method: "GET", path: "/search", query });
+  await search({ q: null, page: undefined });
+  await search({ ids: [null, undefined], empty: "" });
+  await search({ ids: [1, null, 0, undefined, false] });
   assert.deepEqual(urls, ["/search", "/search?empty=", "/search?ids=1&ids=0&ids=false"]);
 });
 
@@ -152,20 +161,21 @@ test("returns binary responses as Blob and text formats as strings", async () =>
   const bytes = new Uint8Array([0xff, 0x00, 0x80]);
   const file = await respond(
     new Response(bytes, { headers: { "content-type": "application/pdf" } }),
-  )<Blob>("/file");
+  )<Blob>({ method: "GET", path: "/file" });
   assert.ok(file instanceof Blob);
   assert.equal(file.type, "application/pdf");
   assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
   assert.ok(
-    (await respond(new Response(bytes, { headers: { "content-type": "image/png" } }))(
-      "/i",
-    )) instanceof Blob,
+    (await respond(new Response(bytes, { headers: { "content-type": "image/png" } }))({
+      method: "GET",
+      path: "/i",
+    })) instanceof Blob,
   );
   for (const type of ["text/csv", "application/xml", "application/atom+xml", null]) {
     const headers = new Headers();
     if (type) headers.set("content-type", type);
     const response = new Response(new TextEncoder().encode("a,b"), { headers });
-    assert.equal(await respond(response)("/text"), "a,b", String(type));
+    assert.equal(await respond(response)({ method: "GET", path: "/text" }), "a,b", String(type));
   }
 });
 
@@ -180,9 +190,12 @@ test("lets fetch set the multipart content type for FormData bodies", async () =
   });
   const body = new FormData();
   body.append("name", "value");
-  await request("/upload", { method: "POST", body });
-  await request("/upload", { method: "POST", body, headers: { "content-type": "text/plain" } });
-  await request("/json", { method: "POST", body: { a: 1 } });
+  await request({ method: "POST", path: "/upload", body });
+  await request(
+    { method: "POST", path: "/upload", body },
+    { headers: { "content-type": "text/plain" } },
+  );
+  await request({ method: "POST", path: "/json", body: { a: 1 } });
   assert.equal(sent[0].get("content-type"), null);
   assert.equal(sent[1].get("content-type"), null);
   assert.equal(sent[2].get("content-type"), "application/json");
@@ -205,7 +218,7 @@ test("builds query strings without URLSearchParams.size", async (t) => {
       return new Response(null, { status: 204 });
     },
   });
-  await request("/search", { query: { q: "lit" } });
+  await request({ method: "GET", path: "/search", query: { q: "lit" } });
   assert.deepEqual(urls, ["/search?q=lit"]);
 });
 
@@ -217,7 +230,11 @@ test("serializes Date query values as ISO 8601", async () => {
       return new Response(null, { status: 204 });
     },
   });
-  await request("/events", { query: { since: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)) } });
+  await request({
+    method: "GET",
+    path: "/events",
+    query: { since: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)) },
+  });
   assert.deepEqual(urls, ["/events?since=2026-01-02T03%3A04%3A05.000Z"]);
 });
 
@@ -230,17 +247,20 @@ test("attaches the URL, method, headers and raw body to ApiError", async () => {
         headers: { "content-type": "text/plain", "www-authenticate": "Bearer" },
       }),
   });
-  await assert.rejects(request("/me", { method: "patch", query: { full: true } }), (error) => {
-    assert.ok(error instanceof ApiError);
-    assert.equal(error.status, 401);
-    assert.equal(error.problem, null);
-    assert.equal(error.message, "HTTP 401");
-    assert.equal(error.url, "https://example.test/me?full=true");
-    assert.equal(error.method, "PATCH");
-    assert.equal(error.headers.get("www-authenticate"), "Bearer");
-    assert.equal(error.body, "Token expired");
-    return true;
-  });
+  await assert.rejects(
+    request({ method: "patch", path: "/me", query: { full: true } }),
+    (error) => {
+      assert.ok(error instanceof ApiError);
+      assert.equal(error.status, 401);
+      assert.equal(error.problem, null);
+      assert.equal(error.message, "HTTP 401");
+      assert.equal(error.url, "https://example.test/me?full=true");
+      assert.equal(error.method, "PATCH");
+      assert.equal(error.headers.get("www-authenticate"), "Bearer");
+      assert.equal(error.body, "Token expired");
+      return true;
+    },
+  );
   const manual = new ApiError(404, null);
   assert.equal(manual.url, undefined);
   assert.equal(manual.body, "");
@@ -251,7 +271,7 @@ test("throws ApiError for invalid JSON in a successful response", async () => {
   const request = createApiFetch({
     fetch: async () => new Response("{oops", { headers: { "content-type": "application/json" } }),
   });
-  await assert.rejects(request("/broken"), (error) => {
+  await assert.rejects(request({ method: "GET", path: "/broken" }), (error) => {
     assert.ok(error instanceof ApiError);
     assert.equal(error.status, 200);
     assert.equal(error.problem, null);
@@ -292,7 +312,7 @@ test("runs middleware in order and lets it retry or answer requests", async () =
       },
     ],
   });
-  assert.deepEqual(await request("/me", { method: "patch", body: { a: 1 } }), { ok: true });
+  assert.deepEqual(await request({ method: "patch", path: "/me", body: { a: 1 } }), { ok: true });
   assert.deepEqual(sent, [
     { url: "https://example.test/me", authorization: "Bearer old", body: '{"a":1}' },
     { url: "https://example.test/me", authorization: "Bearer new", body: '{"a":1}' },
@@ -303,14 +323,42 @@ test("runs middleware in order and lets it retry or answer requests", async () =
     fetch: async () => assert.fail("fetch must not run"),
     middleware: [async () => new Response("cached")],
   });
-  assert.equal(await cached("/cached"), "cached");
+  assert.equal(await cached({ method: "GET", path: "/cached" }), "cached");
 
   const failing = createApiFetch({
     fetch: async () => new Response(null, { status: 503 }),
     middleware: [async (request, next) => next({ ...request, url: `${request.url}?retry=1` })],
   });
   await assert.rejects(
-    failing("/x"),
+    failing({ method: "GET", path: "/x" }),
     (error) => error instanceof ApiError && error.status === 503 && error.url === "/x",
   );
+});
+
+test("layers config headers, content type, header parameters and per-call headers", async () => {
+  const sent: Headers[] = [];
+  const request = createApiFetch({
+    headers: { "content-type": "text/plain", "x-trace": "config", "x-config": "1" },
+    fetch: async (_url, init) => {
+      sent.push(new Headers(init?.headers));
+      return new Response(null, { status: 204 });
+    },
+  });
+  const note = {
+    method: "POST",
+    path: "/notes",
+    body: { text: "hi" },
+    contentType: "application/merge-patch+json",
+    headers: { "x-trace": "param", "x-list": ["a", "b"], "x-absent": undefined, "x-null": null },
+  };
+  await request(note);
+  await request(note, { headers: { "x-trace": "call", "content-type": "application/json" } });
+  assert.equal(sent[0].get("content-type"), "application/merge-patch+json");
+  assert.equal(sent[0].get("x-trace"), "param");
+  assert.equal(sent[0].get("x-config"), "1");
+  assert.equal(sent[0].get("x-list"), "a,b");
+  assert.equal(sent[0].has("x-absent"), false);
+  assert.equal(sent[0].has("x-null"), false);
+  assert.equal(sent[1].get("x-trace"), "call");
+  assert.equal(sent[1].get("content-type"), "application/json");
 });

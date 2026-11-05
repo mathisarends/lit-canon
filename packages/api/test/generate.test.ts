@@ -441,12 +441,13 @@ test("imports a custom request module relative to each resource and keeps it out
   await writeFile(input, JSON.stringify(openapi()));
   await writeFile(
     join(directory, "src/api/request.ts"),
-    `export type ApiRequestOptions = Omit<RequestInit, "body"> & { body?: unknown; query?: object };
+    `export type ApiRequestOptions = Omit<RequestInit, "body" | "method">;
+export interface ApiRequest { method: string; path: string; query?: object; headers?: object; body?: unknown; contentType?: string }
 export class ApiError<P = unknown> extends Error {
   constructor(readonly status: number, readonly problem: P | null) { super(String(status)); }
 }
-export function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T> {
-  return fetch(url, options as RequestInit).then((response) => response.json() as Promise<T>);
+export function apiFetch<T>(request: ApiRequest, options?: ApiRequestOptions): Promise<T> {
+  return fetch(request.path, { ...options, method: request.method }).then((response) => response.json() as Promise<T>);
 }
 `,
   );

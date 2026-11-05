@@ -11,36 +11,31 @@ export const listProducts = (
   params?: ListProductsParams,
   options?: ApiRequestOptions,
 ): Promise<Product[]> =>
-  apiFetch<Product[]>("/products", { ...options, method: "GET", query: params });
+  apiFetch<Product[]>({ method: "GET", path: "/products", query: params }, options);
 
 export const createProduct = (
   request: ProductInput,
   options?: ApiRequestOptions,
-): Promise<Product> => {
-  const requestHeaders = new Headers(options?.headers);
-  if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", "application/json");
-  return apiFetch<Product>("/products", {
-    ...options,
-    method: "POST",
-    body: request,
-    headers: requestHeaders,
-  });
-};
+): Promise<Product> =>
+  apiFetch<Product>(
+    { method: "POST", path: "/products", body: request, contentType: "application/json" },
+    options,
+  );
 
 export const getProduct = (productId: string, options?: ApiRequestOptions): Promise<Product> =>
-  apiFetch<Product>(`/products/${encodeURIComponent(productId)}`, { ...options, method: "GET" });
+  apiFetch<Product>({ method: "GET", path: `/products/${encodeURIComponent(productId)}` }, options);
 
 export const updateProduct = (
   productId: string,
   request: ProductInput,
   options?: ApiRequestOptions,
-): Promise<Product> => {
-  const requestHeaders = new Headers(options?.headers);
-  if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", "application/json");
-  return apiFetch<Product>(`/products/${encodeURIComponent(productId)}`, {
-    ...options,
-    method: "PUT",
-    body: request,
-    headers: requestHeaders,
-  });
-};
+): Promise<Product> =>
+  apiFetch<Product>(
+    {
+      method: "PUT",
+      path: `/products/${encodeURIComponent(productId)}`,
+      body: request,
+      contentType: "application/json",
+    },
+    options,
+  );

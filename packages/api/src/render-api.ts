@@ -131,11 +131,11 @@ function renderOperation(
     throw new Error(`Unexpected Orval helper in ${name}`);
   }
 
-  const call = last.expression;
-  if (call.expression.getText(sourceFile) !== "apiFetch" || call.arguments.length !== 2) {
+  const orvalCall = last.expression;
+  if (orvalCall.expression.getText(sourceFile) !== "apiFetch" || orvalCall.arguments.length !== 2) {
     throw new Error(`Unexpected request call in ${name}`);
   }
-  const options = call.arguments[1];
+  const options = orvalCall.arguments[1];
   if (!ts.isObjectLiteralExpression(options)) {
     throw new Error(`Missing request options in ${name}`);
   }
@@ -153,51 +153,42 @@ function renderOperation(
     }
     return text;
   });
-  const url = urlExpression(operation.path, parameterNames);
-  const fetchOptions = [`...options`, `method: ${JSON.stringify(operation.method.toUpperCase())}`];
+  const request = [
+    `method: ${JSON.stringify(operation.method.toUpperCase())}`,
+    `path: ${urlExpression(operation.path, parameterNames)}`,
+  ];
   if (operation.hasQuery) {
     if (!parameterNames.has("params")) {
       throw new Error(`Missing query params in ${name}`);
     }
-    fetchOptions.push("query: params");
+    request.push("query: params");
+  }
+  if (operation.hasHeaders) {
+    if (!parameterNames.has("headers")) {
+      throw new Error(`Missing header params in ${name}`);
+    }
+    request.push("headers");
   }
   if (body) {
-    fetchOptions.push(`body: ${useRequestName ? "request" : body}`);
+    request.push(`body: ${useRequestName ? "request" : body}`);
   }
-  if (operation.hasHeaders || operation.jsonContentType) {
-    if (
-      (operation.hasHeaders && !parameterNames.has("headers")) ||
-      parameterNames.has("requestHeaders")
-    ) {
-      throw new Error(`Missing or conflicting header params in ${name}`);
-    }
-    // Header parameters fill in what the call site's options.headers leave unset.
-    setup.push(`const requestHeaders = new Headers(options?.headers);`);
-    if (operation.jsonContentType) {
-      setup.push(
-        `if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", ${JSON.stringify(operation.jsonContentType)});`,
-      );
-    }
-    if (operation.hasHeaders)
-      setup.push(`for (const [key, value] of Object.entries(headers ?? {})) {
-        if (value !== undefined && value !== null && !requestHeaders.has(key)) {
-          requestHeaders.set(key, String(value));
-        }
-      }`);
-    fetchOptions.push("headers: requestHeaders");
+  if (operation.jsonContentType) {
+    // The runtime serializes scalar bodies as JSON only for a JSON media type.
+    request.push(`contentType: ${JSON.stringify(operation.jsonContentType)}`);
   }
 
-  const responseType = call.typeArguments?.[0]?.getText(sourceFile);
+  const responseType = orvalCall.typeArguments?.[0]?.getText(sourceFile);
   if (!responseType || !arrow.type) {
     throw new Error(`Missing response type in ${name}`);
   }
+  const call = `apiFetch<${responseType}>({ ${request.join(", ")} }, options)`;
   if (!setup.length) {
     return `export const ${name} = (${parameters.join(", ")}): ${arrow.type.getText(sourceFile)} =>
-      apiFetch<${responseType}>(${url}, { ${fetchOptions.join(", ")} });`;
+      ${call};`;
   }
   return `export const ${name} = (${parameters.join(", ")}): ${arrow.type.getText(sourceFile)} => {
     ${setup.join("\n")}
-    return apiFetch<${responseType}>(${url}, { ${fetchOptions.join(", ")} });
+    return ${call};
   };`;
 }
 
