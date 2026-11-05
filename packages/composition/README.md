@@ -92,8 +92,9 @@ type Params = Record<string, string | undefined>;
 
 An identity function, for type inference and readability. It returns `def` (frozen). Validation happens in `createApp`.
 
-Simple `/:name` segments infer required string params in page callbacks. Intent
-prefetching starts the lazy chunk and `prefetch` hook together on hover (60 ms),
+Simple `/:name` segments infer required string params in page callbacks.
+Route params are percent-decoded once before reaching application callbacks.
+Intent prefetching starts the lazy chunk and `prefetch` hook together on hover (60 ms),
 focus or touch. Guarded pages require a side-effect-free `canPrefetch` check to opt
 in; hover never runs guards. `PrefetchContext` contains `params`, `path`, `url` and
 `container`. Data hooks never block navigation. See the

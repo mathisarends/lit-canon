@@ -24,6 +24,39 @@ const plain = defineFeature({
 const notFound = () => html`<p>not found</p>`;
 
 describe("routing", () => {
+  it("decodes route inputs once for guards, prefetch, title and render", async () => {
+    const guard = vi.fn((_ctx: { params: Record<string, string | undefined> }) => true);
+    const prefetch = vi.fn();
+    const canPrefetch = vi.fn((_ctx: { params: Record<string, string | undefined> }) => true);
+    const { app, host } = await start({
+      features: [
+        defineFeature({
+          name: "encoded",
+          pages: [
+            definePage({ path: "/", render: () => html`home` }),
+            definePage({
+              path: "/encoded/:id",
+              guards: [guard],
+              canPrefetch,
+              prefetch,
+              title: ({ params }) => params.id,
+              render: ({ id }) => html`${id}`,
+            }),
+          ],
+        }),
+      ],
+    });
+    for (const id of ["Müller", "a/b", "a b", "%2F"]) {
+      const path = `/encoded/${encodeURIComponent(id)}`;
+      await app.prefetch(path);
+      expect(canPrefetch.mock.lastCall?.[0].params.id).toBe(id);
+      expect(prefetch.mock.lastCall?.[0].params.id).toBe(id);
+      await app.navigate(path);
+      expect(guard.mock.lastCall?.[0].params.id).toBe(id);
+      expect(text(host)).toBe(id);
+      expect(document.title).toBe(id);
+    }
+  });
   it("renders the page for the initial URL", async () => {
     const { host } = await start({ features: [items, plain] }, "/items/3");
     expect(text(host)).toBe("item 3");

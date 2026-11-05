@@ -68,6 +68,19 @@ const NO_SCROLL: Intent = { scroll: false, anchor: false, redirects: 0 };
 /** The first route: the browser looked for the `#hash` target before it existed. */
 const INITIAL: Intent = { scroll: false, anchor: true, redirects: 0 };
 
+/** URLPattern returns encoded groups; application inputs are decoded exactly once. */
+function decodeParams(params: Params): Params {
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => {
+      try {
+        return [key, value === undefined ? undefined : decodeURIComponent(value)];
+      } catch {
+        return [key, value];
+      }
+    }),
+  );
+}
+
 /** The element a `#hash` points to, also inside open shadow roots of rendered pages. */
 function findAnchor(root: ParentNode, hash: string): Element | null {
   let id: string;
@@ -129,7 +142,7 @@ export function createApp(options: AppOptions): App {
       if (!match) return;
       const { page, pattern } = match;
       const ctx = {
-        params: pattern.exec({ pathname: url.pathname })!.pathname.groups,
+        params: decodeParams(pattern.exec({ pathname: url.pathname })!.pathname.groups),
         path: url.pathname,
         url,
         container,
@@ -190,6 +203,7 @@ export function createApp(options: AppOptions): App {
   const enter =
     (page: PageDef | undefined) =>
     async (params: Params): Promise<boolean> => {
+      params = decodeParams(params);
       const id = ++navId;
       const nav = intent ?? DEFAULT_INTENT;
       intent = undefined;
@@ -269,7 +283,9 @@ export function createApp(options: AppOptions): App {
       path: page.path,
       enter: enter(page),
       render: (params: Params) =>
-        feature.layout ? feature.layout(page.render(params)) : page.render(params),
+        feature.layout
+          ? feature.layout(page.render(decodeParams(params)))
+          : page.render(decodeParams(params)),
     })),
   );
   const fallback = {
