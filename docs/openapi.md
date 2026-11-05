@@ -5,9 +5,13 @@ error. The [catalog specification](../examples/catalog/openapi.json) is a minima
 
 ## The contract
 
-Each included operation must have exactly one tag in the format
-`lower-case-with-hyphens`. The tag is the resource name: `user-settings` becomes the
-`userSettings` namespace with a `userSettingsKeys` factory. Each operation also needs
+Each included operation must have exactly one tag. The tag is the resource name:
+`user-settings` becomes the `userSettings` namespace with a `userSettingsKeys`
+factory and query keys starting with `"user-settings"`. Other spellings are converted
+to that form: `User Settings`, `UserSettings` and `user_settings` all become
+`user-settings`, and accents are dropped (`Über` becomes `uber`). Two tags that
+convert to the same resource fail. `excludeTags` accepts the original or the
+converted name. Each operation also needs
 a unique, explicit `operationId` in `snake_case` or `camelCase`. Local parameter
 references are supported. Bundle path-item references before generation.
 
@@ -32,7 +36,8 @@ response bodies against the schema.
 | Error / symptom                                  | What to check                                                                                                          |
 | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | An operation needs exactly one tag               | Give each operation one resource tag, including excluded operations.                                                   |
-| A tag cannot be used as a directory              | Use a lower-case tag starting with a letter, such as `user-settings`.                                                  |
+| A tag cannot be used as a directory              | Use a tag that starts with a Latin letter after conversion, such as `User Settings`.                                   |
+| Two tags map to the same resource                | Use one spelling per resource, for example only `Users` or only `users`.                                               |
 | Duplicate operation name or export               | Check for IDs that normalize to the same name, such as `get_product` and `getProduct`, and clashes with key factories. |
 | `Query operation "all" conflicts with …Keys.all` | Rename the operation, or mark it with `mutationOperations` if it is not a query.                                       |
 | Unsupported parameter or serialization           | Check parameter location, scalar/array shape, style and explode settings.                                              |

@@ -627,3 +627,51 @@ test("rejects generated name collisions and unsupported parameter serialization 
   await assert.rejects(generate({ input, output }), /Unsupported object or array parameter/);
   assert.equal(await readFile(join(output, "index.ts"), "utf8"), existing);
 });
+
+test("converts tags such as Title Case or PascalCase to resource directories", async () => {
+  const directory = join(root, "tag-names");
+  await mkdir(directory);
+  const spec = openapi();
+  for (const pathItem of Object.values(spec.paths)) {
+    for (const operation of Object.values(pathItem!)) {
+      const tags = (operation as { tags?: string[] }).tags;
+      if (tags?.[0] === "items") tags[0] = "Item Store";
+      if (tags?.[0] === "admin") tags[0] = "AdminPanel";
+      if (tags?.[0] === "system") tags[0] = "System";
+    }
+  }
+  const input = join(directory, "openapi.json");
+  const output = join(directory, "generated");
+  await writeFile(input, JSON.stringify(spec));
+  const result = await generate({ input, output, excludeTags: ["System"] });
+  assert.deepEqual(result.tags, ["admin-panel", "auth", "files", "item-store"]);
+  const index = await readFile(join(output, "index.ts"), "utf8");
+  assert.match(index, /export \* as itemStore from "\.\/item-store";/);
+  assert.match(index, /export \* as adminPanel from "\.\/admin-panel";/);
+  const queries = await readFile(join(output, "item-store/queries.ts"), "utf8");
+  assert.match(queries, /export const itemStoreKeys = \{\s+all: \["item-store"\] as const,/);
+  assert.match(await readFile(join(output, "item-store/api.ts"), "utf8"), /export const getItem/);
+  assert.deepEqual(typecheck(output, result.files), []);
+
+  spec.paths["/admin"]!.get!.tags = ["admin-panel"];
+  spec.paths["/admin"]!.post = {
+    tags: ["AdminPanel"],
+    operationId: "reset_admin",
+    responses: { 204: { description: "Reset" } },
+  };
+  await writeFile(input, JSON.stringify(spec));
+  await assert.rejects(
+    generate({ input, output }),
+    /OpenAPI tags "admin-panel" and "AdminPanel" both map to the resource admin-panel/,
+  );
+  spec.paths["/admin"]!.get!.tags = ["Über Admin"];
+  delete spec.paths["/admin"]!.post;
+  await writeFile(input, JSON.stringify(spec));
+  assert.ok((await generate({ input, output })).tags.includes("uber-admin"));
+  spec.paths["/admin"]!.get!.tags = ["管理"];
+  await writeFile(input, JSON.stringify(spec));
+  await assert.rejects(
+    generate({ input, output }),
+    /tag cannot be used as a resource directory: 管理/,
+  );
+});

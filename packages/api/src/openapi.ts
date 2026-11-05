@@ -84,8 +84,34 @@ export function operationName(id: string | undefined): string {
   return identifier(name, "operation name");
 }
 
+/**
+ * The resource directory for an OpenAPI tag. Tags that are already lower-case with
+ * hyphens stay unchanged; others are converted, e.g. "User Settings" or "UserSettings"
+ * to "user-settings".
+ */
+export function resourceName(tag: string): string {
+  if (/^[a-z][a-z0-9-]*$/.test(tag)) {
+    return tag;
+  }
+  const name = tag
+    // Drop accents: "Über" becomes "Uber".
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (!/^[a-z][a-z0-9-]*$/.test(name)) {
+    throw new Error(`OpenAPI tag cannot be used as a resource directory: ${tag}`);
+  }
+  return name;
+}
+
 export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfig) {
   const operationsByTag = new Map<string, Operations>();
+  /** The original OpenAPI tags of each resource, used to filter Orval's input. */
+  const sourceTags = new Map<string, string>();
   const names = new Set<string>();
   const excluded = new Set(config.excludeTags ?? []);
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
@@ -103,13 +129,18 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       if (operation.tags?.length !== 1) {
         throw new Error(`${method.toUpperCase()} ${path} needs exactly one OpenAPI tag`);
       }
-      const [tag] = operation.tags;
-      if (!/^[a-z][a-z0-9-]*$/.test(tag)) {
-        throw new Error(`OpenAPI tag cannot be used as a resource directory: ${tag}`);
-      }
-      if (excluded.has(tag)) {
+      const [sourceTag] = operation.tags;
+      const tag = resourceName(sourceTag);
+      if (excluded.has(sourceTag) || excluded.has(tag)) {
         continue;
       }
+      const previousTag = sourceTags.get(tag);
+      if (previousTag !== undefined && previousTag !== sourceTag) {
+        throw new Error(
+          `OpenAPI tags "${previousTag}" and "${sourceTag}" both map to the resource ${tag}`,
+        );
+      }
+      sourceTags.set(tag, sourceTag);
       const name = operationName(operation.operationId);
       if (["apiFetch", "ApiRequestOptions", "queryOptions", "mutationOptions"].includes(name)) {
         throw new Error(`Operation name conflicts with a generated import: ${name}`);
@@ -143,5 +174,5 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       throw new Error(`Configured mutation has no included operation: ${name}`);
     }
   }
-  return { operationsByTag, mutationOperations };
+  return { operationsByTag, sourceTags, mutationOperations };
 }

@@ -74,7 +74,7 @@ export async function generate(
   if (!spec || !/^3\./.test(spec.openapi ?? "") || !spec.info || !spec.paths) {
     throw new Error("Input must be an OpenAPI 3 JSON document with info and paths");
   }
-  const { operationsByTag, mutationOperations } = collectOperations(spec, config);
+  const { operationsByTag, sourceTags, mutationOperations } = collectOperations(spec, config);
   const tags = [...operationsByTag.keys()].sort();
   const namespaces = new Set();
   for (const tag of tags) {
@@ -125,7 +125,7 @@ export async function generate(
       const operations = operationsByTag.get(tag)!;
       await generateOrval(
         {
-          input: { target: input, filters: { tags: [tag] } },
+          input: { target: input, filters: { tags: [sourceTags.get(tag)!] } },
           output: {
             mode: "split",
             target: join(resourceDir, "api.ts"),
