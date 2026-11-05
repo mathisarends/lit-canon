@@ -102,6 +102,13 @@ export async function generate(
   const format = (source: string) => prettier.format(source, prettierOptions);
   await mkdir(dirname(output), { recursive: true });
   const temp = await mkdtemp(join(dirname(output), `.${basename(output)}.${tempPrefix}`));
+  // Checked before use, so cleanup below never deletes an unexpected path.
+  if (
+    dirname(temp) !== dirname(output) ||
+    !basename(temp).startsWith(`.${basename(output)}.${tempPrefix}`)
+  ) {
+    throw new Error(`Unexpected temporary directory: ${temp}`);
+  }
   const staged = join(temp, "generated");
   await mkdir(staged);
   let cleanup = true;
@@ -273,15 +280,10 @@ export async function generate(
     }
     return { output, tags, files: [...files.keys()].sort() };
   } finally {
-    // temp is the absolute, dedicated path returned by mkdtemp above.
-    if (
-      dirname(temp) !== dirname(output) ||
-      !basename(temp).startsWith(`.${basename(output)}.${tempPrefix}`)
-    ) {
-      throw new Error(`Unexpected temporary directory: ${temp}`);
-    }
     if (cleanup) {
-      await rm(temp, { recursive: true, force: true });
+      // A failed cleanup (e.g. a locked file on Windows) must not hide the result or the
+      // original error; the directory is only a leftover staging copy.
+      await rm(temp, { recursive: true, force: true }).catch(() => undefined);
     }
   }
 }
