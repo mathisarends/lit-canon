@@ -136,19 +136,26 @@ function typecheck(output: string, files: string[]): string[] {
 
 /** Compile generated TypeScript next to the sources so tests can import and run it. */
 async function compile(directory: string, names: string[]): Promise<void> {
-  for (const name of names) {
+  for (const name of withKeys(names)) {
     const source = await readFile(join(directory, `${name}.ts`), "utf8");
     const compiled = ts
       .transpileModule(source, {
         compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
       })
-      .outputText.replace(/from "\.\/api"/g, 'from "./api.js"');
+      .outputText.replace(/from "\.\/(api|keys)"/g, 'from "./$1.js"');
     await writeFile(join(directory, `${name}.js`), compiled);
   }
 }
 
+/** Queries and mutations import the resource's key factory. */
+function withKeys(names: string[]): string[] {
+  return names.some((name) => name === "queries" || name === "mutations")
+    ? [...names, "keys"]
+    : names;
+}
+
 async function removeCompiled(directory: string, names: string[]): Promise<void> {
-  for (const name of names) {
+  for (const name of withKeys(names)) {
     await rm(join(directory, `${name}.js`));
   }
 }
@@ -182,9 +189,11 @@ test("generates and executes clients, key factories, queries and mutations; dete
   );
 
   const queries = await readFile(join(output, "items/queries.ts"), "utf8");
-  assert.match(queries, /export const itemsKeys = \{\n {2}all: \["items"\] as const,/);
-  assert.match(queries, /queryKey: itemsKeys\.listItems\(input\)/);
-  assert.match(queries, /queryKey: itemsKeys\.getItem\(input\)/);
+  const keysSource = await readFile(join(output, "items/keys.ts"), "utf8");
+  assert.match(keysSource, /export const keys = \{\n {2}all: \["items"\] as const,/);
+  assert.match(keysSource, /createItem: \(\) => \["items", "createItem"\] as const/);
+  assert.match(queries, /queryKey: keys\.listItems\(input\)/);
+  assert.match(queries, /queryKey: keys\.getItem\(input\)/);
   assert.match(
     queries,
     /queryFn: \(\{ signal \}\) => getItem\(input, \{ \.\.\.options, signal \}\)/,
@@ -212,17 +221,20 @@ test("generates and executes clients, key factories, queries and mutations; dete
       });
     },
   });
-  const { itemsKeys, getItemQuery, listItemsQuery } = await import(
+  const { keys } = await import(pathToFileURL(join(items, "keys.js")).href);
+  const { getItemQuery, listItemsQuery } = await import(
     pathToFileURL(join(items, "queries.js")).href
   );
   const { createItemMutation, deleteItemMutation } = await import(
     pathToFileURL(join(items, "mutations.js")).href
   );
-  assert.deepEqual(itemsKeys.all, ["items"]);
-  assert.deepEqual(itemsKeys.listItems(), ["items", "listItems", {}]);
-  assert.deepEqual(itemsKeys.listItems({ limit: 2 }), ["items", "listItems", { limit: 2 }]);
+  assert.deepEqual(keys.all, ["items"]);
+  // Without an input, a key is the prefix of every query of that operation.
+  assert.deepEqual(keys.listItems(), ["items", "listItems"]);
+  assert.deepEqual(keys.listItems({ limit: 2 }), ["items", "listItems", { limit: 2 }]);
   assert.deepEqual(listItemsQuery().queryKey, ["items", "listItems", {}]);
-  assert.deepEqual(getItemQuery({ itemId: "a/b" }).queryKey, itemsKeys.getItem({ itemId: "a/b" }));
+  assert.deepEqual(getItemQuery({ itemId: "a/b" }).queryKey, keys.getItem({ itemId: "a/b" }));
+  assert.deepEqual(createItemMutation().mutationKey, ["items", "createItem"]);
   const signal = new AbortController().signal;
   await getItemQuery({ itemId: "a/b" }).queryFn({ signal });
   assert.equal(requests[0].url, "/items/a%2Fb");
@@ -239,7 +251,7 @@ test("generates and executes clients, key factories, queries and mutations; dete
     { itemId: "a/b" },
     { headers: { "x-trace": "1" }, signal: AbortSignal.abort() },
   );
-  assert.deepEqual(traced.queryKey, itemsKeys.getItem({ itemId: "a/b" }));
+  assert.deepEqual(traced.queryKey, keys.getItem({ itemId: "a/b" }));
   await traced.queryFn({ signal });
   assert.equal(new Headers(requests[4].init.headers).get("x-trace"), "1");
   assert.equal(requests[4].init.signal, signal);
@@ -268,7 +280,7 @@ test("generates and executes clients, key factories, queries and mutations; dete
   assert.ok(!(await readdir(join(output, "items"))).includes("mutations.ts"));
 });
 
-test("generates key factories only for resources with queries and names them after the resource", async () => {
+test("generates a key factory for every resource", async () => {
   const directory = join(root, "keys");
   await mkdir(directory);
   const spec = openapi();
@@ -285,14 +297,21 @@ test("generates key factories only for resources with queries and names them aft
   const result = await generate({ input, output, mutationOperations: ["start_login"] });
   assert.ok(!result.files.some((file) => file.startsWith("files/queries")));
   assert.ok(!result.files.some((file) => file.startsWith("auth/queries")));
-  for (const file of ["files/mutations.ts", "auth/mutations.ts"]) {
-    assert.doesNotMatch(await readFile(join(output, file), "utf8"), /Keys\b/);
-  }
-  const settings = await readFile(join(output, "user-settings/queries.ts"), "utf8");
-  assert.match(settings, /export const userSettingsKeys = \{/);
-  assert.match(settings, /all: \["user-settings"\] as const/);
-  assert.match(settings, /getSettings: \(\) => \["user-settings", "getSettings"\] as const/);
-  assert.match(settings, /queryKey: userSettingsKeys\.getSettings\(\)/);
+  assert.match(
+    await readFile(join(output, "files/keys.ts"), "utf8"),
+    /uploadFile: \(\) => \["files", "uploadFile"\] as const/,
+  );
+  assert.match(
+    await readFile(join(output, "auth/mutations.ts"), "utf8"),
+    /mutationKey: keys\.startLogin\(\)/,
+  );
+  const settingsKeys = await readFile(join(output, "user-settings/keys.ts"), "utf8");
+  assert.match(settingsKeys, /all: \["user-settings"\] as const/);
+  assert.match(settingsKeys, /getSettings: \(\) => \["user-settings", "getSettings"\] as const/);
+  assert.match(
+    await readFile(join(output, "user-settings/queries.ts"), "utf8"),
+    /queryKey: keys\.getSettings\(\)/,
+  );
   assert.match(await readFile(join(output, "index.ts"), "utf8"), /export \* as userSettings/);
   assert.deepEqual(typecheck(output, result.files), []);
 });
@@ -341,7 +360,7 @@ export default defineConfig({
   assert.match(checked.stdout, /Client is current: .*client \(4 resources\)/);
   assert.match(
     await readFile(join(directory, "src/deep/client/items/queries.ts"), "utf8"),
-    /itemsKeys/,
+    /keys\.getItem/,
   );
 
   // Paths resolve against the config file, not the working directory.
@@ -754,15 +773,12 @@ test("rejects generated name collisions and unsupported parameter serialization 
   spec.paths["/items/{itemId}"]!.get!.operationId = "list_items_query";
   await writeFile(input, JSON.stringify(spec));
   await assert.rejects(generate({ input, output }), /Duplicate generated resource export/);
-  spec.paths["/items/{itemId}"]!.get!.operationId = "items_keys";
+  spec.paths["/items/{itemId}"]!.get!.operationId = "keys";
   await writeFile(input, JSON.stringify(spec));
-  await assert.rejects(
-    generate({ input, output }),
-    /Duplicate generated resource export: itemsKeys/,
-  );
+  await assert.rejects(generate({ input, output }), /Duplicate generated resource export: keys/);
   spec.paths["/items/{itemId}"]!.get!.operationId = "all";
   await writeFile(input, JSON.stringify(spec));
-  await assert.rejects(generate({ input, output }), /"all" conflicts with itemsKeys\.all/);
+  await assert.rejects(generate({ input, output }), /"all" conflicts with keys\.all/);
   spec.paths["/items/{itemId}"]!.get!.operationId = "query_options";
   await writeFile(input, JSON.stringify(spec));
   await assert.rejects(generate({ input, output }), /conflicts with a generated import/);
@@ -828,8 +844,8 @@ test("converts tags such as Title Case or PascalCase to resource directories", a
   const index = await readFile(join(output, "index.ts"), "utf8");
   assert.match(index, /export \* as itemStore from "\.\/item-store";/);
   assert.match(index, /export \* as adminPanel from "\.\/admin-panel";/);
-  const queries = await readFile(join(output, "item-store/queries.ts"), "utf8");
-  assert.match(queries, /export const itemStoreKeys = \{\s+all: \["item-store"\] as const,/);
+  const keys = await readFile(join(output, "item-store/keys.ts"), "utf8");
+  assert.match(keys, /export const keys = \{\s+all: \["item-store"\] as const,/);
   assert.match(await readFile(join(output, "item-store/api.ts"), "utf8"), /export const getItem/);
   assert.deepEqual(typecheck(output, result.files), []);
 
@@ -883,7 +899,7 @@ test("collects operations without a tag in the defaultTag resource", async () =>
   assert.match(api, /export const getHealth/);
   assert.doesNotMatch(api, /listItems|ping/);
   assert.match(
-    await readFile(join(output, "general/queries.ts"), "utf8"),
+    await readFile(join(output, "general/keys.ts"), "utf8"),
     /all: \["general"\] as const/,
   );
   assert.deepEqual(typecheck(output, result.files), []);

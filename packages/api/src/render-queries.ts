@@ -2,8 +2,6 @@ import type { Operations } from "./operation.js";
 import type { OperationInput, OperationInputs } from "./render-api.js";
 
 interface RenderQueryOptions {
-  /** camelCase resource name, e.g. "userSettings" for the tag "user-settings". */
-  namespace: string;
   mutationOperations?: string[];
   /** Module that exports ApiRequestOptions, e.g. "lit-canon-fetch". */
   requestImport: string;
@@ -17,49 +15,66 @@ function inputParameter(input: OperationInput | null): string[] {
   return [`input: ${input.type}${input.optional ? " = {}" : ""}`];
 }
 
+/**
+ * One key function per operation. Without an input, a query key is the prefix of every
+ * query of that operation, so it can invalidate them all.
+ */
 function renderKeys(
-  keysName: string,
   tag: string,
   queryNames: string[],
+  mutationNames: string[],
   inputs: OperationInputs,
 ): string {
-  const members = queryNames.map((name) => {
-    const input = inputs.get(name)!;
-    const key = [JSON.stringify(tag), JSON.stringify(name), ...(input ? ["input"] : [])];
-    return `${name}: (${inputParameter(input).join("")}) => [${key.join(", ")}] as const,`;
-  });
-  return `export const ${keysName} = {
+  const key = (name: string, input = false) =>
+    `[${[JSON.stringify(tag), JSON.stringify(name), ...(input ? ["input"] : [])].join(", ")}] as const`;
+  const members = [
+    ...queryNames.map((name) => {
+      const input = inputs.get(name)!;
+      if (!input) {
+        return `${name}: () => ${key(name)},`;
+      }
+      return `${name}: (input?: ${input.type}) =>
+        input === undefined ? ${key(name)} : (${key(name, true)}),`;
+    }),
+    ...mutationNames.map((name) => `${name}: () => ${key(name)},`),
+  ];
+  return `export const keys = {
     all: [${JSON.stringify(tag)}] as const,
     ${members.join("\n")}
   };`;
 }
 
-function renderQuery(keysName: string, name: string, input: OperationInput | null): string {
+function renderQuery(name: string, input: OperationInput | null): string {
   const args = input ? ["input"] : [];
   // Request options are not part of the query key.
   return `export const ${name}Query = (${[...inputParameter(input), "options?: ApiRequestOptions"].join(", ")}) =>
     queryOptions({
-      queryKey: ${keysName}.${name}(${args.join("")}),
+      queryKey: keys.${name}(${args.join("")}),
       queryFn: ({ signal }) => ${name}(${[...args, "{ ...options, signal }"].join(", ")}),
     });`;
 }
 
-function renderMutation(tag: string, name: string, input: OperationInput | null): string {
+function renderMutation(name: string, input: OperationInput | null): string {
   const variables = input ? `input${input.optional ? "?" : ""}: ${input.type}` : "";
   const args = [...(input ? ["input"] : []), "options"];
   return `export const ${name}Mutation = (options?: ApiRequestOptions) =>
     mutationOptions({
-      mutationKey: [${JSON.stringify(tag)}, ${JSON.stringify(name)}] as const,
+      mutationKey: keys.${name}(),
       mutationFn: (${variables}) => ${name}(${args.join(", ")}),
     });`;
 }
 
+/** The input types of the named operations, e.g. `["GetProductInput"]`. */
+function inputTypes(names: string[], inputs: OperationInputs): string[] {
+  return names.flatMap((name) => {
+    const input = inputs.get(name);
+    return input ? [input.type] : [];
+  });
+}
+
 /** `import { getProduct, type GetProductInput } from "./api";` */
 function apiImport(names: string[], inputs: OperationInputs): string {
-  const types = names.flatMap((name) => {
-    const input = inputs.get(name);
-    return input ? [`type ${input.type}`] : [];
-  });
+  const types = inputTypes(names, inputs).map((type) => `type ${type}`);
   return `import { ${[...names, ...types].join(", ")} } from "./api";`;
 }
 
@@ -69,9 +84,8 @@ export function renderQueryFiles(
   inputs: OperationInputs,
   header: string,
   config: RenderQueryOptions,
-): { queries: string | null; mutations: string | null } {
+): { keys: string; queries: string | null; mutations: string | null } {
   const mutationOperations = new Set(config.mutationOperations ?? []);
-  const keysName = `${config.namespace}Keys`;
   const queryNames: string[] = [];
   const mutationNames: string[] = [];
 
@@ -88,13 +102,13 @@ export function renderQueryFiles(
   if (inputs.size !== operations.size) {
     throw new Error(`Unexpected generated operation for ${tag}`);
   }
-  if (queryNames.includes("all")) {
-    throw new Error(`Query operation "all" conflicts with ${keysName}.all`);
+  if (operations.has("all")) {
+    throw new Error(`Operation "all" conflicts with keys.all`);
   }
 
   const bindings = new Set(operations.keys());
   for (const name of [
-    ...(queryNames.length ? [keysName] : []),
+    "keys",
     ...queryNames.map((name) => `${name}Query`),
     ...mutationNames.map((name) => `${name}Mutation`),
   ]) {
@@ -104,14 +118,22 @@ export function renderQueryFiles(
     bindings.add(name);
   }
 
+  const keyTypes = inputTypes(queryNames, inputs);
+  const keys = [
+    header,
+    ...(keyTypes.length ? [`import type { ${keyTypes.join(", ")} } from "./api";`] : []),
+    renderKeys(tag, queryNames, mutationNames, inputs),
+    "",
+  ].join("\n\n");
+
   const requestImport = `import type { ApiRequestOptions } from ${JSON.stringify(config.requestImport)};`;
+  const keysImport = 'import { keys } from "./keys";';
   const queries = queryNames.length
     ? [
         header,
         ['import { queryOptions } from "@tanstack/lit-query";', requestImport].join("\n"),
-        apiImport(queryNames, inputs),
-        renderKeys(keysName, tag, queryNames, inputs),
-        ...queryNames.map((name) => renderQuery(keysName, name, inputs.get(name)!)),
+        [apiImport(queryNames, inputs), keysImport].join("\n"),
+        ...queryNames.map((name) => renderQuery(name, inputs.get(name)!)),
         "",
       ].join("\n\n")
     : null;
@@ -120,11 +142,11 @@ export function renderQueryFiles(
     ? [
         header,
         ['import { mutationOptions } from "@tanstack/lit-query";', requestImport].join("\n"),
-        apiImport(mutationNames, inputs),
-        ...mutationNames.map((name) => renderMutation(tag, name, inputs.get(name)!)),
+        [apiImport(mutationNames, inputs), keysImport].join("\n"),
+        ...mutationNames.map((name) => renderMutation(name, inputs.get(name)!)),
         "",
       ].join("\n\n")
     : null;
 
-  return { queries, mutations };
+  return { keys, queries, mutations };
 }

@@ -14,7 +14,7 @@ export class ProductCatalog extends LitElement {
     ...products.createProductMutation(),
     // Decide which data to refresh in the application, after a successful write.
     onSuccess: (_product, _variables, _onMutateResult, { client }) =>
-      client.invalidateQueries({ queryKey: products.productsKeys.all }),
+      client.invalidateQueries({ queryKey: products.keys.all }),
   }));
 
   override render() {

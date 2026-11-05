@@ -195,11 +195,11 @@ export async function generate(
       if (problems) {
         await writeFile(join(resourceDir, "problems.ts"), await format(problems));
       }
-      const { queries, mutations } = renderQueryFiles(tag, operations, inputs, header, {
-        namespace: camel(tag),
+      const { keys, queries, mutations } = renderQueryFiles(tag, operations, inputs, header, {
         mutationOperations,
         requestImport,
       });
+      await writeFile(join(resourceDir, "keys.ts"), await format(keys));
       if (queries) {
         await writeFile(join(resourceDir, "queries.ts"), await format(queries));
       }
@@ -213,6 +213,7 @@ export async function generate(
         "",
         'export * from "./api";',
         'export * from "./models";',
+        'export * from "./keys";',
         ...(problems ? ['export * from "./problems";'] : []),
         ...(queries ? ['export * from "./queries";'] : []),
         ...(mutations ? ['export * from "./mutations";'] : []),
@@ -231,6 +232,7 @@ export async function generate(
       validateExports({
         "api.ts": apiSource,
         "models.ts": modelsSource,
+        "keys.ts": keys,
         ...(problems ? { "problems.ts": problems } : {}),
         ...(queries ? { "queries.ts": queries } : {}),
         ...(mutations ? { "mutations.ts": mutations } : {}),

@@ -12,15 +12,16 @@ import {
   type CreateProductInput,
   type UpdateProductInput,
 } from "./api";
+import { keys } from "./keys";
 
 export const createProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
-    mutationKey: ["products", "createProduct"] as const,
+    mutationKey: keys.createProduct(),
     mutationFn: (input: CreateProductInput) => createProduct(input, options),
   });
 
 export const updateProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
-    mutationKey: ["products", "updateProduct"] as const,
+    mutationKey: keys.updateProduct(),
     mutationFn: (input: UpdateProductInput) => updateProduct(input, options),
   });
