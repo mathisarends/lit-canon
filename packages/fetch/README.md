@@ -38,17 +38,20 @@ try {
 }
 ```
 
-| Export              | Purpose                                                            |
-| ------------------- | ------------------------------------------------------------------ |
-| `configureApiFetch` | Set `baseUrl`, `credentials`, `headers` and `fetch` for `apiFetch` |
-| `apiFetch`          | The request function generated clients call                        |
-| `createApiFetch`    | An independent `apiFetch` with its own configuration               |
-| `ApiError`          | Thrown for HTTP failures, with `status` and `problem`              |
-| `ApiProblem`        | RFC 9457 problem details type                                      |
-| `ApiRequestOptions` | Request options: `fetch` options plus `body` and `query`           |
-| `ApiFetchConfig`    | Configuration type                                                 |
+| Export              | Purpose                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| `configureApiFetch` | Set `baseUrl`, `credentials`, `headers`, `fetch` and `middleware`       |
+| `apiFetch`          | The request function generated clients call                             |
+| `createApiFetch`    | An independent `apiFetch` with its own configuration                    |
+| `ApiError`          | Thrown for HTTP failures: `status`, `problem`, `url`, `headers`, `body` |
+| `ApiProblem`        | RFC 9457 problem details type                                           |
+| `ApiRequestOptions` | Request options: `fetch` options plus `body` and `query`                |
+| `ApiFetchConfig`    | Configuration type                                                      |
+| `ApiMiddleware`     | Middleware type, e.g. for token refresh and retries                     |
 
-`null` and `undefined` query values are omitted, also inside arrays. See the
+`null` and `undefined` query values are omitted, also inside arrays. Requests send
+cookies by default (`credentials: "include"`), also to a `baseUrl` on another
+origin; set `credentials: "same-origin"` when the API does not use cookies. See the
 [runtime guide](https://github.com/mathisarends/lit-canon/blob/main/docs/runtime.md)
 for details.
 

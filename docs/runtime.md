@@ -23,6 +23,12 @@ Without configuration, requests use relative API paths and send cookies with
 | `fetch`       | A custom `fetch` implementation, for example in tests.                |
 | `middleware`  | Functions that wrap every request; see [middleware](#middleware).     |
 
+> [!WARNING]
+> The `"include"` default sends cookies with every request, also when `baseUrl`
+> points to another origin. It suits APIs with cookie sessions. For token-based APIs,
+> or when `baseUrl` is a third-party service, set `credentials: "same-origin"` (the
+> `fetch` default) or `"omit"`.
+
 `createApiFetch(config)` returns an independent `apiFetch` function with its own
 configuration, for a second API or for tests.
 
