@@ -56,9 +56,11 @@ headers, and per-request credentials override the configured credentials.
 - **Bodies**: plain objects, arrays and `null` are sent as JSON with
   `content-type: application/json`, unless a content type is set. `FormData`, `Blob`
   and other native bodies are passed through.
-- **Responses**: `application/json` and `+json` bodies are parsed. Other non-empty
-  bodies return text. Empty bodies, 204 and 205 responses and HEAD requests return
-  `undefined`.
+- **Responses**: `application/json` and `+json` bodies are parsed. Text formats
+  (`text/*`, XML, form data and bodies without a content type) return a string. Other
+  media types, such as `application/pdf`, `application/octet-stream` or images,
+  return a `Blob`, matching the `Blob` type generated for binary responses. Empty
+  bodies, 204 and 205 responses and HEAD requests return `undefined`.
 - **Cancellation**: query factories forward TanStack's `AbortSignal`, so leaving a
   page cancels its pending requests.
 

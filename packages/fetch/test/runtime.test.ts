@@ -126,3 +126,25 @@ test("omits null and undefined query values, including array elements", async ()
   await request("/search", { query: { ids: [1, null, 0, undefined, false] } });
   assert.deepEqual(urls, ["/search", "/search?empty=", "/search?ids=1&ids=0&ids=false"]);
 });
+
+test("returns binary responses as Blob and text formats as strings", async () => {
+  const respond = (response: Response) => createApiFetch({ fetch: async () => response });
+  const bytes = new Uint8Array([0xff, 0x00, 0x80]);
+  const file = await respond(
+    new Response(bytes, { headers: { "content-type": "application/pdf" } }),
+  )<Blob>("/file");
+  assert.ok(file instanceof Blob);
+  assert.equal(file.type, "application/pdf");
+  assert.deepEqual(new Uint8Array(await file.arrayBuffer()), bytes);
+  assert.ok(
+    (await respond(new Response(bytes, { headers: { "content-type": "image/png" } }))(
+      "/i",
+    )) instanceof Blob,
+  );
+  for (const type of ["text/csv", "application/xml", "application/atom+xml", null]) {
+    const headers = new Headers();
+    if (type) headers.set("content-type", type);
+    const response = new Response(new TextEncoder().encode("a,b"), { headers });
+    assert.equal(await respond(response)("/text"), "a,b", String(type));
+  }
+});

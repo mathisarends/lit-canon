@@ -75,9 +75,26 @@ function isJsonBody(body: unknown): boolean {
   return prototype === Object.prototype || prototype === null;
 }
 
+function mediaType(contentType: string | null): string {
+  return contentType?.split(";", 1)[0].trim().toLowerCase() ?? "";
+}
+
 function isJson(contentType: string | null): boolean {
-  const mediaType = contentType?.split(";", 1)[0].trim().toLowerCase();
-  return mediaType === "application/json" || mediaType?.endsWith("+json") === true;
+  const type = mediaType(contentType);
+  return type === "application/json" || type.endsWith("+json");
+}
+
+/** Text formats are returned as strings; everything else with a media type is binary. */
+function isText(contentType: string | null): boolean {
+  const type = mediaType(contentType);
+  return (
+    type === "" ||
+    type.startsWith("text/") ||
+    type === "application/xml" ||
+    type.endsWith("+xml") ||
+    type === "application/javascript" ||
+    type === "application/x-www-form-urlencoded"
+  );
 }
 
 function toProblem(value: unknown): ApiProblem | null {
@@ -126,11 +143,16 @@ function parseProblem(text: string): ApiProblem | null {
   }
 }
 
-/** Returns parsed JSON, text or undefined; throws ApiError for non-2xx responses. */
+/** Returns parsed JSON, text, a Blob or undefined; throws ApiError for non-2xx responses. */
 async function readResponse<T>(response: Response, method: string): Promise<T> {
   const hasBody = method !== "HEAD" && response.status !== 204 && response.status !== 205;
+  const contentType = response.headers.get("content-type");
+  const json = isJson(contentType);
+  if (response.ok && hasBody && !json && !isText(contentType)) {
+    // Files such as PDFs and images: reading them as text would corrupt the bytes.
+    return (await response.blob()) as T;
+  }
   const text = hasBody ? await response.text() : "";
-  const json = isJson(response.headers.get("content-type"));
   if (!response.ok) {
     throw new ApiError(response.status, json && text ? parseProblem(text) : null);
   }
