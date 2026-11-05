@@ -14,6 +14,9 @@ pnpm add lit-canon-composition lit @lit-labs/router @lit/context
 
 `lit`, `@lit-labs/router` and `@lit/context` are peer dependencies. The package is ESM only, and the library itself uses no decorators, so it works with `experimentalDecorators` and with standard decorators.
 
+> [!NOTE]
+> `@lit-labs/router` is a Lit Labs package: experimental and still on `0.x`, so a minor version may change its API. The peer range `^0.1.4` therefore only accepts `0.1.x`. lit-canon-composition uses only `Router`, `goto` and `outlet` and wraps them behind `createApp`, so a router update needs changes here rather than in your pages.
+
 ### URLPattern polyfill
 
 The router matches paths with [`URLPattern`](https://developer.mozilla.org/en-US/docs/Web/API/URLPattern). If you support browsers without it, load [`urlpattern-polyfill`](https://www.npmjs.com/package/urlpattern-polyfill) before your app starts:
