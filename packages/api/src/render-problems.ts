@@ -6,6 +6,8 @@ import { resolveReference } from "./references.js";
 export interface ProblemType {
   name: string;
   hasCode: boolean;
+  /** Documented response keys with this problem, e.g. "404", "4XX" or "default". */
+  statuses: string[];
 }
 
 function hasCode(
@@ -60,7 +62,12 @@ export function operationProblems(
         es5keyword: true,
         es5IdentifierName: true,
       });
-      problems.set(name, { name, hasCode: hasCode(reference, spec) });
+      const previous = problems.get(name);
+      problems.set(name, {
+        name,
+        hasCode: hasCode(reference, spec),
+        statuses: [...new Set([...(previous?.statuses ?? []), status])],
+      });
     }
   }
   return [...problems.values()];
@@ -72,6 +79,29 @@ function typeName(name: string): string {
 
 function union(members: string[]): string {
   return members.length ? members.join(" | ") : "never";
+}
+
+/** A condition on `error.status` matching the documented responses, or null for any status. */
+function statusCondition(statuses: string[]): string | null {
+  const exact = new Set<number>();
+  const ranges = new Set<number>();
+  for (const status of statuses) {
+    if (/^[1-5]\d\d$/.test(status)) {
+      exact.add(Number(status));
+    } else if (/^[1-5]xx$/i.test(status)) {
+      ranges.add(Number(status[0]));
+    } else {
+      // "default" (or an unknown key) documents problems for every status.
+      return null;
+    }
+  }
+  const conditions = [
+    ...[...exact].sort((a, b) => a - b).map((status) => `error.status === ${status}`),
+    ...[...ranges]
+      .sort((a, b) => a - b)
+      .map((range) => `Math.floor(error.status / 100) === ${range}`),
+  ];
+  return conditions.length ? conditions.join(" || ") : "false";
 }
 
 export function renderProblems(
@@ -100,6 +130,7 @@ export function renderProblems(
   ) {
     throw new Error(`Problem type conflicts with a generated resource export: ${tag}`);
   }
+  const statuses = statusCondition(problems.flatMap((problem) => problem.statuses));
   const codeType = problems.every((problem) => problem.hasCode)
     ? `${prefix}Problem["code"]`
     : `Extract<${prefix}Problem, { code?: unknown }>["code"]`;
@@ -115,8 +146,11 @@ export function renderProblems(
     ),
     `export type ${prefix}Problem = ${union(operationTypes)};`,
     `export type ${prefix}ProblemCode = ${codeType};`,
-    `export function is${prefix}Error(error: unknown): error is ApiError<${prefix}Problem> {
-      return error instanceof ApiError;
+    `/** An ApiError with a problem body and a status documented for this resource. */
+    export function is${prefix}Error(
+      error: unknown,
+    ): error is ApiError<${prefix}Problem> & { problem: ${prefix}Problem } {
+      return error instanceof ApiError && error.problem !== null${statuses === null ? "" : ` && (${statuses})`};
     }`,
     "",
   ].join("\n\n");

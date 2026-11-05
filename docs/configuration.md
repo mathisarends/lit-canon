@@ -86,8 +86,10 @@ such as `GetProductProblem`, `ProductsProblem` and `ProductsProblemCode`, and th
 guard `isProductsError`. Code types also work when some problem schemas omit
 `code`. Inline problem schemas require `problems: false` or extraction into
 `components.schemas`. A custom request module must export a generic `ApiError<P>`
-when these helpers are enabled. The guard identifies `ApiError` instances; it does
-not validate payloads or tell errors of different resources apart.
+when these helpers are enabled. The guard accepts an `ApiError` only when it has a
+problem body and a status the resource documents with a problem response (`404`,
+`4XX` or `default`), and narrows `problem` to a non-null value. It does not validate
+the payload against the schema.
 
 [examples/advanced.config.ts](../examples/advanced.config.ts) shows these options
 together.

@@ -416,6 +416,33 @@ test("generates problem unions from referenced responses, oneOf and anyOf, with 
     true,
   );
   assert.equal(isItemsError(new Error("Offline")), false);
+  // Only documented statuses with a problem body belong to the resource.
+  assert.equal(isItemsError(new ApiError(404, null)), false);
+  assert.equal(
+    isItemsError(new ApiError(502, { type: "gateway", title: "Bad gateway", status: 502 })),
+    false,
+  );
+  assert.match(
+    source,
+    /error\.problem !== null &&\s+\(error\.status === 400 \|\| error\.status === 404\)/,
+  );
+  assert.match(source, /error is ApiError<ItemsProblem> & \{ problem: ItemsProblem \}/);
+  const failed = spec.paths["/items"]!.get!.responses![400];
+  delete spec.paths["/items"]!.get!.responses![400];
+  spec.paths["/items"]!.get!.responses!["5XX"] = failed;
+  await writeFile(input, JSON.stringify(spec));
+  await generate({ input, output });
+  assert.match(
+    await readFile(join(output, "items/problems.ts"), "utf8"),
+    /\(error\.status === 404 \|\|\s+Math\.floor\(error\.status \/ 100\) === 5\)/,
+  );
+  spec.paths["/items"]!.get!.responses!.default = failed;
+  await writeFile(input, JSON.stringify(spec));
+  await generate({ input, output });
+  assert.match(
+    await readFile(join(output, "items/problems.ts"), "utf8"),
+    /return error instanceof ApiError && error\.problem !== null;\s+\}/,
+  );
   const disabled = await generate({ input, output, problems: false });
   assert.ok(!disabled.files.some((file) => file.endsWith("problems.ts")));
   spec.paths["/items"]!.get!.responses![400] = {
