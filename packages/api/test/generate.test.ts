@@ -188,7 +188,7 @@ test("generates key factories only for resources with queries and names them aft
   assert.deepEqual(typecheck(output, result.files), []);
 });
 
-test("rejects removed configuration options with a pointer to the migration guide", async () => {
+test("rejects removed and unknown configuration options", async () => {
   const directory = join(root, "removed");
   await mkdir(directory);
   const input = join(directory, "openapi.json");
@@ -202,6 +202,14 @@ test("rejects removed configuration options with a pointer to the migration guid
   await assert.rejects(
     generate(legacy({ queryAliases: { items: {} } })),
     /"queryAliases" was removed in lit-canon-api 1\.0\. See docs\/migration\.md\./,
+  );
+  await assert.rejects(
+    generate(legacy({ excludeTag: ["system"] })),
+    /^Error: Unknown configuration option "excludeTag"\. Did you mean "excludeTags"\?$/,
+  );
+  await assert.rejects(
+    generate(legacy({ somethingElse: true })),
+    /^Error: Unknown configuration option "somethingElse"\.$/,
   );
   assert.deepEqual(await readdir(directory), ["openapi.json"]);
 });

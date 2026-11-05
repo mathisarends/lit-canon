@@ -40,6 +40,35 @@ export interface GenerateResult {
 
 const removedOptions = ["features", "queryAliases"] as const;
 
+const knownOptions: ReadonlyArray<keyof CodegenConfig> = [
+  "input",
+  "output",
+  "workspace",
+  "request",
+  "excludeTags",
+  "preserveDirectories",
+  "problems",
+  "mutationOperations",
+  "prettier",
+];
+
+/** Edit distance, to suggest the intended option for a typo. */
+function distance(a: string, b: string): number {
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1].toLowerCase() === b[j - 1].toLowerCase() ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 export function validateConfig(config: CodegenConfig): void {
   if (!config || typeof config.input !== "string" || typeof config.output !== "string") {
     throw new Error("Configuration requires input and output paths");
@@ -48,5 +77,14 @@ export function validateConfig(config: CodegenConfig): void {
     if (Object.hasOwn(config, option)) {
       throw new Error(`"${option}" was removed in lit-canon-api 1.0. See docs/migration.md.`);
     }
+  }
+  // defineConfig's generic signature does not reject unknown keys, so check at runtime.
+  for (const option of Object.keys(config)) {
+    if ((knownOptions as readonly string[]).includes(option)) {
+      continue;
+    }
+    const [closest] = [...knownOptions].sort((a, b) => distance(option, a) - distance(option, b));
+    const hint = distance(option, closest) <= 3 ? ` Did you mean "${closest}"?` : "";
+    throw new Error(`Unknown configuration option "${option}".${hint}`);
   }
 }

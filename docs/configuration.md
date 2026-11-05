@@ -19,7 +19,9 @@ The configuration types are defined in
 | `prettier`            | Overrides for the detected project Prettier configuration.               |
 
 The options `features` and `queryAliases` were removed in 1.0. A config that still
-sets them fails with an error pointing to the [migration guide](migration.md).
+sets them fails with an error pointing to the [migration guide](migration.md). Any
+other unknown option also fails, with a suggestion for likely typos such as
+`excludeTag`.
 
 ## Run the generator
 
