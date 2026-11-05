@@ -130,24 +130,31 @@ export const productsKeys = {
     ["products", "getProduct", productId] as const,
 };
 
-export const listProductsQuery = (params?: Parameters<typeof listProducts>[0]) =>
+export const listProductsQuery = (
+  params?: Parameters<typeof listProducts>[0],
+  options?: ApiRequestOptions,
+) =>
   queryOptions({
     queryKey: productsKeys.listProducts(params),
-    queryFn: ({ signal }) => listProducts(params, { signal }),
+    queryFn: ({ signal }) => listProducts(params, { ...options, signal }),
   });
 ```
+
+The optional last argument passes request options, such as extra headers, to the
+API function. It is not part of the query key, and TanStack's abort signal replaces
+any `signal` in it.
 
 **[mutations.ts](../examples/catalog/generated/products/mutations.ts)**: mutation
 options that take one object.
 
 ```ts
-export const updateProductMutation = () =>
+export const updateProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
     mutationKey: ["products", "updateProduct"] as const,
     mutationFn: (variables: {
       productId: Parameters<typeof updateProduct>[0];
       request: Parameters<typeof updateProduct>[1];
-    }) => updateProduct(variables.productId, variables.request),
+    }) => updateProduct(variables.productId, variables.request, options),
   });
 ```
 

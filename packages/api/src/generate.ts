@@ -188,6 +188,7 @@ export async function generate(
       const { queries, mutations } = renderQueryFiles(tag, operations, apiSource, header, {
         namespace: resourceNamespace(tag),
         mutationOperations,
+        requestImport,
       });
       if (queries) {
         await writeFile(join(resourceDir, "queries.ts"), await format(queries));

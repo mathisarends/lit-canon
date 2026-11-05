@@ -89,16 +89,19 @@ test("generates and executes clients, key factories, queries and mutations; dete
   assert.match(queries, /params \?\? null/);
   assert.match(queries, /queryKey: itemsKeys\.listItems\(params\)/);
   assert.match(queries, /queryKey: itemsKeys\.getItem\(itemId\)/);
-  assert.match(queries, /queryFn: \(\{ signal \}\) => getItem\(itemId, \{ signal \}\)/);
+  assert.match(
+    queries,
+    /queryFn: \(\{ signal \}\) => getItem\(itemId, \{ \.\.\.options, signal \}\)/,
+  );
   assert.doesNotMatch(queries, /queryKey: \[/);
 
   const mutations = await readFile(join(output, "items/mutations.ts"), "utf8");
   assert.match(mutations, /variables: \{ request: Parameters<typeof createItem>\[0\] \}/);
   assert.match(mutations, /itemId: Parameters<typeof deleteItem>\[0\];/);
   assert.match(mutations, /params\?: Parameters<typeof deleteItem>\[1\];/);
-  assert.match(mutations, /deleteItem\(variables\.itemId, variables\.params\)/);
+  assert.match(mutations, /deleteItem\(variables\.itemId, variables\.params, options\)/);
   const login = await readFile(join(output, "auth/mutations.ts"), "utf8");
-  assert.match(login, /mutationFn: \(\) => startLogin\(\)/);
+  assert.match(login, /mutationFn: \(\) => startLogin\(options\)/);
 
   // Typecheck generated output, including optional mutation variables and Lit Query inference.
   assert.deepEqual(typecheck(output, result.files), []);
@@ -136,6 +139,17 @@ test("generates and executes clients, key factories, queries and mutations; dete
   assert.equal(requests[2].url, "/items/2");
   await deleteItemMutation().mutationFn({ itemId: "3", params: { force: true } });
   assert.equal(requests[3].url, "/items/3?force=true");
+  // Request options reach the request but not the query key; TanStack's signal wins.
+  const traced = getItemQuery("a/b", {
+    headers: { "x-trace": "1" },
+    signal: AbortSignal.abort(),
+  });
+  assert.deepEqual(traced.queryKey, itemsKeys.getItem("a/b"));
+  await traced.queryFn({ signal });
+  assert.equal(new Headers(requests[4].init.headers).get("x-trace"), "1");
+  assert.equal(requests[4].init.signal, signal);
+  await deleteItemMutation({ headers: { "x-trace": "2" } }).mutationFn({ itemId: "4" });
+  assert.equal(new Headers(requests[5].init.headers).get("x-trace"), "2");
   await removeCompiled(items, ["api", "queries", "mutations"]);
 
   await generate(config, { check: true });

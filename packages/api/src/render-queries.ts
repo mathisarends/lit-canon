@@ -12,6 +12,8 @@ interface RenderQueryOptions {
   /** camelCase resource name, e.g. "userSettings" for the tag "user-settings". */
   namespace: string;
   mutationOperations?: string[];
+  /** Module that exports ApiRequestOptions, e.g. "lit-canon-fetch". */
+  requestImport: string;
 }
 
 export function operationInputs(source: string): Map<string, OperationInput[]> {
@@ -91,20 +93,21 @@ function renderQuery(keysName: string, name: string, inputs: OperationInput[]): 
   const names = inputs.map(({ name: inputName }) => inputName);
   const signal = signalName === "signal" ? "signal" : `signal: ${signalName}`;
 
-  return `export const ${name}Query = (${functionParameters(inputs)}) =>
+  // Request options are not part of the query key.
+  return `export const ${name}Query = (${[functionParameters(inputs), "options?: ApiRequestOptions"].filter(Boolean).join(", ")}) =>
     queryOptions({
       queryKey: ${keysName}.${name}(${names.join(", ")}),
-      queryFn: ({ ${signal} }) => ${name}(${[...names, `{ ${signal} }`].join(", ")}),
+      queryFn: ({ ${signal} }) => ${name}(${[...names, `{ ...options, ${signal} }`].join(", ")}),
     });`;
 }
 
 function renderMutation(tag: string, name: string, inputs: OperationInput[]): string {
   const key = `mutationKey: [${JSON.stringify(tag)}, ${JSON.stringify(name)}] as const,`;
   if (!inputs.length) {
-    return `export const ${name}Mutation = () =>
+    return `export const ${name}Mutation = (options?: ApiRequestOptions) =>
       mutationOptions({
         ${key}
-        mutationFn: () => ${name}(),
+        mutationFn: () => ${name}(options),
       });`;
   }
   const seen = new Set<string>();
@@ -117,8 +120,8 @@ function renderMutation(tag: string, name: string, inputs: OperationInput[]): st
   const properties = inputs.map(
     ({ name: inputName, optional, type }) => `${inputName}${optional ? "?" : ""}: ${type};`,
   );
-  const call = inputs.map(({ name: inputName }) => `variables.${inputName}`);
-  return `export const ${name}Mutation = () =>
+  const call = [...inputs.map(({ name: inputName }) => `variables.${inputName}`), "options"];
+  return `export const ${name}Mutation = (options?: ApiRequestOptions) =>
     mutationOptions({
       ${key}
       mutationFn: (variables: { ${properties.join(" ")} }) => ${name}(${call.join(", ")}),
@@ -170,7 +173,10 @@ export function renderQueryFiles(
   const queries = queryNames.length
     ? [
         header,
-        'import { queryOptions } from "@tanstack/lit-query";',
+        [
+          'import { queryOptions } from "@tanstack/lit-query";',
+          `import type { ApiRequestOptions } from ${JSON.stringify(config.requestImport)};`,
+        ].join("\n"),
         `import { ${queryNames.join(", ")} } from "./api";`,
         renderKeys(keysName, tag, queryNames, inputs),
         ...queryNames.map((name) => renderQuery(keysName, name, inputs.get(name)!)),
@@ -181,7 +187,10 @@ export function renderQueryFiles(
   const mutations = mutationNames.length
     ? [
         header,
-        'import { mutationOptions } from "@tanstack/lit-query";',
+        [
+          'import { mutationOptions } from "@tanstack/lit-query";',
+          `import type { ApiRequestOptions } from ${JSON.stringify(config.requestImport)};`,
+        ].join("\n"),
         `import { ${mutationNames.join(", ")} } from "./api";`,
         ...mutationNames.map((name) => renderMutation(tag, name, inputs.get(name)!)),
         "",
