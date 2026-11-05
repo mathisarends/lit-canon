@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { generate as generateOrval } from "orval";
 import * as prettier from "prettier";
 import { isUrl, isJson, readInput, parseInput } from "./input.js";
@@ -13,8 +13,8 @@ import { collectOperations, identifier } from "./openapi.js";
 import { hasErrorCode, isWithin, listFiles, outputFiles } from "./files.js";
 import { camel } from "./naming.js";
 
-/** Generated clients import this package unless the config names its own request module. */
-const defaultRequestModule = "lit-canon-fetch";
+/** Generated clients import this package unless the config names another runtime. */
+const defaultRuntime = "lit-canon-fetch";
 
 /**
  * Orval reads the apiFetch signature from a mutator file. renderApi rewrites every call
@@ -49,7 +49,9 @@ export async function generate(
   const remote = isUrl(config.input);
   const input = remote ? config.input : resolve(cwd, config.input);
   const output = resolve(cwd, config.output);
-  const requestPath = config.request ? resolve(cwd, config.request.path) : null;
+  const runtime = config.runtime ?? defaultRuntime;
+  // A runtime starting with "." or "/" is a file; anything else is a package name.
+  const requestPath = runtime.startsWith(".") || isAbsolute(runtime) ? resolve(cwd, runtime) : null;
   if (
     output === parse(output).root ||
     isWithin(output, cwd) ||
@@ -58,7 +60,7 @@ export async function generate(
   ) {
     throw new Error(`Output must be a dedicated generated directory: ${output}`);
   }
-  const preserved = new Set(config.preserveDirectories ?? []);
+  const preserved = new Set(config.preserve ?? []);
   for (const name of preserved) {
     if (
       typeof name !== "string" ||
@@ -74,10 +76,7 @@ export async function generate(
   if (!spec || !/^3\./.test(spec.openapi ?? "") || !spec.info || !spec.paths) {
     throw new Error("Input must be an OpenAPI 3 document with info and paths");
   }
-  const { operationsByTag, sourceTags, allTags, mutationOperations } = collectOperations(
-    spec,
-    config,
-  );
+  const { operationsByTag, sourceTags, allTags } = collectOperations(spec, config);
   const tags = [...operationsByTag.keys()].sort();
   const namespaces = new Set();
   for (const tag of tags) {
@@ -132,9 +131,7 @@ export async function generate(
     }
     for (const tag of tags) {
       const resourceDir = join(staged, tag);
-      const requestImport = requestPath
-        ? importPath(join(output, tag), requestPath)
-        : defaultRequestModule;
+      const requestImport = requestPath ? importPath(join(output, tag), requestPath) : runtime;
       const operations = operationsByTag.get(tag)!;
       await generateOrval(
         {
@@ -142,7 +139,7 @@ export async function generate(
             target: orvalInput,
             filters:
               sourceTags.get(tag) === null
-                ? // The defaultTag resource: every operation without a tag.
+                ? // The fallback resource: every operation without a tag.
                   { mode: "exclude", tags: allTags }
                 : { tags: [sourceTags.get(tag)!] },
           },
@@ -196,7 +193,6 @@ export async function generate(
         await writeFile(join(resourceDir, "problems.ts"), await format(problems));
       }
       const { keys, queries, mutations } = renderQueryFiles(tag, operations, inputs, header, {
-        mutationOperations,
         requestImport,
       });
       await writeFile(join(resourceDir, "keys.ts"), await format(keys));
@@ -206,8 +202,6 @@ export async function generate(
       if (mutations) {
         await writeFile(join(resourceDir, "mutations.ts"), await format(mutations));
       }
-      const runtimeExports = config.request?.exports ?? ["ApiError"];
-      const runtimeTypeExports = config.request?.typeExports ?? ["ApiProblem", "ApiRequestOptions"];
       const barrel = [
         header,
         "",
@@ -217,16 +211,6 @@ export async function generate(
         ...(problems ? ['export * from "./problems";'] : []),
         ...(queries ? ['export * from "./queries";'] : []),
         ...(mutations ? ['export * from "./mutations";'] : []),
-        ...(runtimeExports.length
-          ? [
-              `export { ${runtimeExports.map((name) => identifier(name, "request export")).join(", ")} } from ${JSON.stringify(requestImport)};`,
-            ]
-          : []),
-        ...(runtimeTypeExports.length
-          ? [
-              `export type { ${runtimeTypeExports.map((name) => identifier(name, "request type export")).join(", ")} } from ${JSON.stringify(requestImport)};`,
-            ]
-          : []),
         "",
       ].join("\n");
       validateExports({
@@ -236,7 +220,6 @@ export async function generate(
         ...(problems ? { "problems.ts": problems } : {}),
         ...(queries ? { "queries.ts": queries } : {}),
         ...(mutations ? { "mutations.ts": mutations } : {}),
-        "request exports": barrel,
       });
       await writeFile(join(resourceDir, "index.ts"), await format(barrel));
     }

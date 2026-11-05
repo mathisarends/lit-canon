@@ -78,7 +78,7 @@ try {
 import { defineConfig, type CodegenConfig } from "lit-canon-api";
 const config: CodegenConfig = {
   input: "./openapi.json", output: "./src/api/generated",
-  excludeTags: ["system"], mutationOperations: ["start_login"],
+  tags: { exclude: ["system"] }, operations: { startLogin: "mutation" },
 };
 export default defineConfig(config);
 `,
@@ -96,11 +96,13 @@ import { html } from "lit";
 configureApiFetch({
   headers: async ({ method }): Promise<HeadersInit> => ({ "x-method": method }),
 });
-export const all = items.itemsKeys.all;
-export const query = items.getItemQuery("1");
+export const all = items.keys.all;
+export const query = items.getItemQuery({ itemId: "1" });
 export const remove = items.deleteItemMutation();
-export const variables: items.DeleteItemVariables = { itemId: "1" };
-const detailQueries = ({ id }: { id: string }) => ({ item: { ...items.getItemQuery(id), staleTime: 30_000 } });
+export const input: items.DeleteItemInput = { itemId: "1" };
+const detailQueries = ({ id }: { id: string }) => ({
+  item: { ...items.getItemQuery({ itemId: id }), staleTime: 30_000 },
+});
 const detail = definePage({
   path: "/items/:id",
   prefetch: prefetchQueries(({ params }) => detailQueries(params)),

@@ -16,8 +16,8 @@ let root: string;
 const config = {
   input: "openapi.json",
   output: "generated",
-  excludeTags: ["system"],
-  mutationOperations: ["start_login"],
+  tags: { exclude: ["system"] },
+  operations: { startLogin: "mutation" as const },
 };
 before(async () => {
   await mkdir(resolve(".test-output"), { recursive: true });

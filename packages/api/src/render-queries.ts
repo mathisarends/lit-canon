@@ -2,7 +2,6 @@ import type { Operations } from "./operation.js";
 import type { OperationInput, OperationInputs } from "./render-api.js";
 
 interface RenderQueryOptions {
-  mutationOperations?: string[];
   /** Module that exports ApiRequestOptions, e.g. "lit-canon-fetch". */
   requestImport: string;
 }
@@ -85,7 +84,6 @@ export function renderQueryFiles(
   header: string,
   config: RenderQueryOptions,
 ): { keys: string; queries: string | null; mutations: string | null } {
-  const mutationOperations = new Set(config.mutationOperations ?? []);
   const queryNames: string[] = [];
   const mutationNames: string[] = [];
 
@@ -93,7 +91,7 @@ export function renderQueryFiles(
     if (!inputs.has(name)) {
       throw new Error(`Missing generated API operation: ${name}`);
     }
-    if (operation.method === "get" && !mutationOperations.has(name)) {
+    if (operation.kind === "query") {
       queryNames.push(name);
     } else {
       mutationNames.push(name);

@@ -164,7 +164,12 @@ test("generates and executes clients, key factories, queries and mutations; dete
   const input = join(root, "openapi.json");
   const output = join(root, "generated");
   await writeFile(input, JSON.stringify(openapi()));
-  const config = { input, output, excludeTags: ["system"], mutationOperations: ["start_login"] };
+  const config = {
+    input,
+    output,
+    tags: { exclude: ["system"] },
+    operations: { startLogin: "mutation" as const },
+  };
   const result = await generate(config);
   assert.deepEqual(result.tags, ["admin", "auth", "files", "items"]);
   assert.ok(!result.files.includes("auth/queries.ts"));
@@ -183,10 +188,8 @@ test("generates and executes clients, key factories, queries and mutations; dete
   // Only the root index names the spec version.
   assert.doesNotMatch(api, /spec version/);
   assert.match(await readFile(join(output, "index.ts"), "utf8"), / \* OpenAPI spec version: /);
-  assert.match(
-    await readFile(join(output, "items/index.ts"), "utf8"),
-    /export \{ ApiError \} from "lit-canon-fetch";/,
-  );
+  // Runtime types come from the runtime package, not from every resource.
+  assert.doesNotMatch(await readFile(join(output, "items/index.ts"), "utf8"), /lit-canon-fetch/);
 
   const queries = await readFile(join(output, "items/queries.ts"), "utf8");
   const keysSource = await readFile(join(output, "items/keys.ts"), "utf8");
@@ -294,7 +297,7 @@ test("generates a key factory for every resource", async () => {
   const input = join(directory, "openapi.json");
   const output = join(directory, "generated");
   await writeFile(input, JSON.stringify(spec));
-  const result = await generate({ input, output, mutationOperations: ["start_login"] });
+  const result = await generate({ input, output, operations: { startLogin: "mutation" } });
   assert.ok(!result.files.some((file) => file.startsWith("files/queries")));
   assert.ok(!result.files.some((file) => file.startsWith("auth/queries")));
   assert.match(
@@ -332,8 +335,35 @@ test("rejects removed and unknown configuration options", async () => {
     /"queryAliases" was removed in lit-canon-api 1\.0\. See docs\/migration\.md\./,
   );
   await assert.rejects(
-    generate(legacy({ excludeTag: ["system"] })),
-    /^Error: Unknown configuration option "excludeTag"\. Did you mean "excludeTags"\?$/,
+    generate(legacy({ excludeTags: ["system"] })),
+    /^Error: "excludeTags" was replaced by "tags\.exclude" in lit-canon-api 2\.0\. See docs\/migration\.md\.$/,
+  );
+  for (const [option, replacement] of [
+    ["request", "runtime"],
+    ["defaultTag", "tags.fallback"],
+    ["preserveDirectories", "preserve"],
+    ["mutationOperations", "operations"],
+  ]) {
+    await assert.rejects(
+      generate(legacy({ [option]: [] })),
+      new RegExp(`"${option}" was replaced by "${replacement.replace(".", "\\.")}"`),
+    );
+  }
+  await assert.rejects(
+    generate(legacy({ operation: {} })),
+    /^Error: Unknown configuration option "operation"\. Did you mean "operations"\?$/,
+  );
+  await assert.rejects(
+    generate(legacy({ tags: { excluded: [] } })),
+    /Unknown configuration option "tags\.excluded"/,
+  );
+  await assert.rejects(
+    generate(legacy({ operations: { listItems: "read" } })),
+    /operations\.listItems must be "query" or "mutation"/,
+  );
+  await assert.rejects(
+    generate(legacy({ problems: "always" })),
+    /problems must be "auto", true or false/,
   );
   await assert.rejects(
     generate(legacy({ somethingElse: true })),
@@ -351,7 +381,7 @@ test("CLI uses generate and check commands, the default config file name and pat
     `
 import { defineConfig } from "lit-canon-api";
 export default defineConfig({
-  input: "openapi.json", output: "src/deep/client", excludeTags: ["system"],
+  input: "openapi.json", output: "src/deep/client", tags: { exclude: ["system"] },
 });`,
   );
   const generated = await run(process.execPath, [cli, "generate"], { cwd: directory });
@@ -414,7 +444,7 @@ test("CLI watch mode regenerates after input and config changes and survives err
   const input = join(directory, "openapi.json");
   await writeFile(input, JSON.stringify(openapi()));
   const config = (exclude: string[]) =>
-    `export default { input: "openapi.json", output: "generated", excludeTags: ${JSON.stringify(exclude)} };`;
+    `export default { input: "openapi.json", output: "generated", tags: { exclude: ${JSON.stringify(exclude)} } };`;
   await writeFile(join(directory, "lit-canon-api.config.ts"), config(["system"]));
 
   const child = spawn(process.execPath, [cli, "generate", "--watch"], { cwd: directory });
@@ -450,7 +480,7 @@ test("CLI watch mode regenerates after input and config changes and survives err
   }
 });
 
-test("imports a custom request module relative to each resource and keeps it outside the output", async () => {
+test("imports a custom runtime file relative to each resource and keeps it outside the output", async () => {
   const directory = join(root, "custom-request");
   await mkdir(join(directory, "src/api"), { recursive: true });
   const input = join(directory, "openapi.json");
@@ -468,18 +498,12 @@ export function apiFetch<T>(request: ApiRequest, options?: ApiRequestOptions): P
 `,
   );
   const output = join(directory, "src/api/generated");
-  const config = {
-    input,
-    output,
-    request: { path: "src/api/request.ts", typeExports: ["ApiRequestOptions"] },
-  };
+  const config = { input, output, runtime: "./src/api/request.ts" };
   const result = await generate(config, { cwd: directory });
   const api = await readFile(join(output, "items/api.ts"), "utf8");
   assert.match(api, /from "\.\.\/\.\.\/request"/);
   assert.doesNotMatch(api, /lit-canon-fetch/);
-  const barrel = await readFile(join(output, "items/index.ts"), "utf8");
-  assert.match(barrel, /export \{ ApiError \} from "\.\.\/\.\.\/request";/);
-  assert.match(barrel, /export type \{ ApiRequestOptions \} from "\.\.\/\.\.\/request";/);
+  assert.doesNotMatch(await readFile(join(output, "items/index.ts"), "utf8"), /request/);
   assert.deepEqual(typecheck(output, result.files), []);
   await assert.rejects(
     generate({ ...config, output: "src/api" }, { cwd: directory }),
@@ -651,7 +675,7 @@ test("preserves separately generated directories, binary files and empty directo
   await mkdir(directory);
   const input = join(directory, "openapi.json");
   const output = join(directory, "generated");
-  const config = { input, output, preserveDirectories: ["rpc"] };
+  const config = { input, output, preserve: ["rpc"] };
   await writeFile(input, JSON.stringify(openapi()));
   const initial = await generate(config);
   const rpc = join(output, "rpc");
@@ -677,15 +701,12 @@ test("preserves separately generated directories, binary files and empty directo
   assert.deepEqual(await readdir(join(rpc, "empty")), []);
   await generate(config, { check: true });
   await assert.rejects(
-    generate({ ...config, preserveDirectories: ["rpc", "items"] }),
+    generate({ ...config, preserve: ["rpc", "items"] }),
     /conflicts with a preserved directory/,
   );
+  await assert.rejects(generate({ ...config, preserve: ["../rpc"] }), /top-level directory names/);
   await assert.rejects(
-    generate({ ...config, preserveDirectories: ["../rpc"] }),
-    /top-level directory names/,
-  );
-  await assert.rejects(
-    generate({ ...config, preserveDirectories: ["rpc", "index.ts"] }),
+    generate({ ...config, preserve: ["rpc", "index.ts"] }),
     /top-level directory names/,
   );
   const other = join(directory, "manual");
@@ -839,7 +860,7 @@ test("converts tags such as Title Case or PascalCase to resource directories", a
   const input = join(directory, "openapi.json");
   const output = join(directory, "generated");
   await writeFile(input, JSON.stringify(spec));
-  const result = await generate({ input, output, excludeTags: ["System"] });
+  const result = await generate({ input, output, tags: { exclude: ["System"] } });
   assert.deepEqual(result.tags, ["admin-panel", "auth", "files", "item-store"]);
   const index = await readFile(join(output, "index.ts"), "utf8");
   assert.match(index, /export \* as itemStore from "\.\/item-store";/);
@@ -872,7 +893,7 @@ test("converts tags such as Title Case or PascalCase to resource directories", a
   );
 });
 
-test("collects operations without a tag in the defaultTag resource", async () => {
+test("collects operations without a tag in the tags.fallback resource", async () => {
   const directory = join(root, "default-tag");
   await mkdir(directory);
   const spec = openapi();
@@ -890,9 +911,13 @@ test("collects operations without a tag in the defaultTag resource", async () =>
   await writeFile(input, JSON.stringify(spec));
   await assert.rejects(
     generate({ input, output }),
-    /GET \/admin needs exactly one OpenAPI tag \(or set defaultTag\)/,
+    /GET \/admin needs exactly one OpenAPI tag \(or set tags\.fallback\)/,
   );
-  const result = await generate({ input, output, defaultTag: "General", excludeTags: ["system"] });
+  const result = await generate({
+    input,
+    output,
+    tags: { fallback: "General", exclude: ["system"] },
+  });
   assert.deepEqual(result.tags, ["auth", "files", "general", "items"]);
   const api = await readFile(join(output, "general/api.ts"), "utf8");
   assert.match(api, /export const listAdmin/);
@@ -904,14 +929,13 @@ test("collects operations without a tag in the defaultTag resource", async () =>
   );
   assert.deepEqual(typecheck(output, result.files), []);
   await assert.rejects(
-    generate({ input, output, defaultTag: "Items" }),
-    /OpenAPI tag "items" and defaultTag "Items" both map to the resource items|defaultTag "Items" and OpenAPI tag "items" both map to the resource items/,
+    generate({ input, output, tags: { fallback: "Items" } }),
+    /OpenAPI tag "items" and tags\.fallback "Items" both map to the resource items|tags\.fallback "Items" and OpenAPI tag "items" both map to the resource items/,
   );
   const excluded = await generate({
     input,
     output,
-    defaultTag: "general",
-    excludeTags: ["general", "system"],
+    tags: { fallback: "general", exclude: ["general", "system"] },
   });
   assert.deepEqual(excluded.tags, ["auth", "files", "items"]);
 });
@@ -1017,4 +1041,44 @@ test("reads YAML files and http(s) URLs like JSON files", async () => {
     generate({ input: yamlInput, output: join(directory, "yaml") }),
     /Could not parse the OpenAPI input/,
   );
+});
+
+test("operations turns a POST into a query and a GET into a mutation", async () => {
+  const directory = join(root, "operation-kinds");
+  await mkdir(directory);
+  const spec = openapi();
+  spec.paths["/items/search"] = {
+    post: {
+      tags: ["items"],
+      operationId: "search_items",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: { type: "object", properties: { text: { type: "string" } } },
+          },
+        },
+      },
+      responses: { 200: { description: "OK" } },
+    },
+  };
+  const input = join(directory, "openapi.json");
+  const output = join(directory, "generated");
+  await writeFile(input, JSON.stringify(spec));
+  await assert.rejects(
+    generate({ input, output, operations: { search_items: "query" } }),
+    /operations\.search_items names no included operation\. Use the function name, e\.g\. "searchItems"\./,
+  );
+  const result = await generate({
+    input,
+    output,
+    operations: { searchItems: "query", listItems: "mutation" },
+  });
+  assert.deepEqual(typecheck(output, result.files), []);
+  const queries = await readFile(join(output, "items/queries.ts"), "utf8");
+  assert.match(queries, /export const searchItemsQuery = \(\s*input: SearchItemsInput,/);
+  assert.doesNotMatch(queries, /listItemsQuery/);
+  const mutations = await readFile(join(output, "items/mutations.ts"), "utf8");
+  assert.match(mutations, /export const listItemsMutation/);
+  assert.doesNotMatch(mutations, /searchItemsMutation/);
 });

@@ -163,7 +163,7 @@ export async function scaffoldPage(config: CodegenConfig, options: PageScaffoldO
   const usedBindings = new Set<string>();
   const input = isUrl(config.input) ? config.input : resolve(cwd, config.input);
   const spec = parseInput(await readInput(input), input);
-  const { operationsByTag, mutationOperations } = collectOperations(spec, config);
+  const { operationsByTag } = collectOperations(spec, config);
   const imports = new Set<string>();
   const members: string[] = [];
   for (const [key, id] of queries) {
@@ -172,7 +172,7 @@ export async function scaffoldPage(config: CodegenConfig, options: PageScaffoldO
       throw new Error(`Reserved query name: ${key}`);
     const name = operationName(id);
     const resource = [...operationsByTag].find(([, operations]) => operations.has(name));
-    if (!resource || resource[1].get(name)!.method !== "get" || mutationOperations.includes(name)) {
+    if (!resource || resource[1].get(name)!.kind !== "query") {
       throw new Error(`Scaffold query must be an included read operation: ${id}`);
     }
     const operation = resource[1].get(name)!;

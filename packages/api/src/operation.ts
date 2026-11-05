@@ -1,3 +1,4 @@
+import type { OperationKind } from "./config.js";
 import type { ProblemType } from "./render-problems.js";
 
 export interface OperationParameter {
@@ -14,6 +15,7 @@ export interface OperationParameter {
 export interface Operation {
   path: string;
   method: string;
+  kind: OperationKind;
   parameters: OperationParameter[];
   /** Whether the request body is required; undefined without a body. */
   bodyRequired?: boolean;

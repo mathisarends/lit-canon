@@ -184,13 +184,14 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
   const operationsByTag = new Map<string, Operations>();
   /**
    * The original OpenAPI tag of each resource, used to filter Orval's input; null for
-   * the defaultTag resource, which holds the operations without a tag.
+   * the fallback resource, which holds the operations without a tag.
    */
   const sourceTags = new Map<string, string | null>();
   /** Every tag in the input, so Orval can select the untagged operations. */
   const allTags = new Set<string>();
   const names = new Set<string>();
-  const excluded = new Set(config.excludeTags ?? []);
+  const excluded = new Set(config.tags?.exclude ?? []);
+  const fallback = config.tags?.fallback;
   for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
     if (!pathItem) {
       continue;
@@ -205,16 +206,13 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       const operation = value as OpenAPIV3.OperationObject;
       const operationTags = operation.tags ?? [];
       operationTags.forEach((tag) => allTags.add(tag));
-      if (
-        operationTags.length > 1 ||
-        (operationTags.length === 0 && config.defaultTag === undefined)
-      ) {
+      if (operationTags.length > 1 || (operationTags.length === 0 && fallback === undefined)) {
         throw new Error(
-          `${method.toUpperCase()} ${path} needs exactly one OpenAPI tag${operationTags.length ? "" : " (or set defaultTag)"}`,
+          `${method.toUpperCase()} ${path} needs exactly one OpenAPI tag${operationTags.length ? "" : " (or set tags.fallback)"}`,
         );
       }
       const sourceTag = operationTags[0] ?? null;
-      const label = sourceTag ?? config.defaultTag!;
+      const label = sourceTag ?? fallback!;
       const tag = resourceName(label);
       if (excluded.has(label) || excluded.has(tag)) {
         continue;
@@ -222,7 +220,7 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       const previousTag = sourceTags.get(tag);
       if (previousTag !== undefined && previousTag !== sourceTag) {
         const describe = (value: string | null) =>
-          value === null ? `defaultTag "${config.defaultTag}"` : `OpenAPI tag "${value}"`;
+          value === null ? `tags.fallback "${fallback}"` : `OpenAPI tag "${value}"`;
         throw new Error(
           `${describe(previousTag)} and ${describe(sourceTag)} both map to the resource ${tag}`,
         );
@@ -252,6 +250,7 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       operations.set(name, {
         path,
         method,
+        kind: method === "get" ? "query" : "mutation",
         parameters: inputParameters(
           [...parameters.values()],
           spec,
@@ -267,11 +266,15 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
       operationsByTag.set(tag, operations);
     }
   }
-  const mutationOperations = (config.mutationOperations ?? []).map(operationName);
-  for (const name of mutationOperations) {
-    if (!names.has(name)) {
-      throw new Error(`Configured mutation has no included operation: ${name}`);
+  for (const [name, kind] of Object.entries(config.operations ?? {})) {
+    const operation = [...operationsByTag.values()]
+      .map((operations) => operations.get(name))
+      .find((operation) => operation !== undefined);
+    if (!operation) {
+      const camel = /_/.test(name) ? ` Use the function name, e.g. "${operationName(name)}".` : "";
+      throw new Error(`operations.${name} names no included operation.${camel}`);
     }
+    operation.kind = kind;
   }
-  return { operationsByTag, sourceTags, allTags: [...allTags], mutationOperations };
+  return { operationsByTag, sourceTags, allTags: [...allTags] };
 }
