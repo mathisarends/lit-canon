@@ -17,6 +17,46 @@ const run = promisify(execFile);
 const cli = resolve("dist/cli.js");
 
 let root: string;
+
+test("sends scalar JSON request bodies with the declared media type", async () => {
+  const directory = join(root, "scalar-json");
+  await mkdir(directory);
+  const spec = openapi();
+  spec.paths = {};
+  for (const type of ["string", "number", "boolean"] as const) {
+    spec.paths[`/${type}`] = {
+      post: {
+        tags: ["values"],
+        operationId: `send_${type}`,
+        requestBody: { required: true, content: { "application/json": { schema: { type } } } },
+        responses: { 204: { description: "OK" } },
+      },
+    };
+  }
+  const input = join(directory, "openapi.json");
+  await writeFile(input, JSON.stringify(spec));
+  const output = join(directory, "generated");
+  await generate({ input, output });
+  await compile(join(output, "values"), ["api"]);
+  const sent: Request[] = [];
+  configureApiFetch({
+    fetch: async (url, init) => {
+      sent.push(new Request(`https://example.test${url}`, init));
+      return new Response(null, { status: 204 });
+    },
+  });
+  const api = await import(pathToFileURL(join(output, "values/api.js")).href);
+  for (const [name, value] of [
+    ["sendString", "hello"],
+    ["sendNumber", 42],
+    ["sendBoolean", false],
+  ] as const) {
+    await api[name](value);
+    const request = sent.at(-1)!;
+    assert.equal(request.headers.get("content-type"), "application/json");
+    assert.equal(await request.text(), JSON.stringify(value));
+  }
+});
 before(async () => {
   const base = resolve(".test-output");
   await mkdir(base, { recursive: true });

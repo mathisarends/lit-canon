@@ -16,8 +16,16 @@ export const listProducts = (
 export const createProduct = (
   request: ProductInput,
   options?: ApiRequestOptions,
-): Promise<Product> =>
-  apiFetch<Product>("/products", { ...options, method: "POST", body: request });
+): Promise<Product> => {
+  const requestHeaders = new Headers(options?.headers);
+  if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", "application/json");
+  return apiFetch<Product>("/products", {
+    ...options,
+    method: "POST",
+    body: request,
+    headers: requestHeaders,
+  });
+};
 
 export const getProduct = (productId: string, options?: ApiRequestOptions): Promise<Product> =>
   apiFetch<Product>(`/products/${encodeURIComponent(productId)}`, { ...options, method: "GET" });
@@ -26,9 +34,13 @@ export const updateProduct = (
   productId: string,
   request: ProductInput,
   options?: ApiRequestOptions,
-): Promise<Product> =>
-  apiFetch<Product>(`/products/${encodeURIComponent(productId)}`, {
+): Promise<Product> => {
+  const requestHeaders = new Headers(options?.headers);
+  if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", "application/json");
+  return apiFetch<Product>(`/products/${encodeURIComponent(productId)}`, {
     ...options,
     method: "PUT",
     body: request,
+    headers: requestHeaders,
   });
+};

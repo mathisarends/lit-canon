@@ -150,13 +150,22 @@ function renderOperation(
   if (body) {
     fetchOptions.push(`body: ${useRequestName ? "request" : body}`);
   }
-  if (operation.hasHeaders) {
-    if (!parameterNames.has("headers") || parameterNames.has("requestHeaders")) {
+  if (operation.hasHeaders || operation.jsonContentType) {
+    if (
+      (operation.hasHeaders && !parameterNames.has("headers")) ||
+      parameterNames.has("requestHeaders")
+    ) {
       throw new Error(`Missing or conflicting header params in ${name}`);
     }
     // Header parameters fill in what the call site's options.headers leave unset.
-    setup.push(`const requestHeaders = new Headers(options?.headers);
-      for (const [key, value] of Object.entries(headers ?? {})) {
+    setup.push(`const requestHeaders = new Headers(options?.headers);`);
+    if (operation.jsonContentType) {
+      setup.push(
+        `if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", ${JSON.stringify(operation.jsonContentType)});`,
+      );
+    }
+    if (operation.hasHeaders)
+      setup.push(`for (const [key, value] of Object.entries(headers ?? {})) {
         if (value !== undefined && value !== null && !requestHeaders.has(key)) {
           requestHeaders.set(key, String(value));
         }

@@ -2,6 +2,26 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ApiError, createApiFetch } from "../dist/index.js";
 
+test("serializes JSON primitives while preserving native text bodies", async () => {
+  const bodies: unknown[] = [];
+  const request = createApiFetch({
+    fetch: async (_url, init) => {
+      bodies.push(init?.body);
+      return new Response(null, { status: 204 });
+    },
+  });
+  for (const body of ["hello", 42, false, null]) {
+    await request("/json", {
+      method: "POST",
+      body,
+      headers: { "content-type": "application/merge-patch+json" },
+    });
+    assert.equal(bodies.at(-1), JSON.stringify(body));
+  }
+  await request("/text", { method: "POST", body: "hello" });
+  assert.equal(bodies.at(-1), "hello");
+});
+
 test("serializes query, JSON and multipart requests and forwards overrides", async () => {
   const requests: Array<{ url: RequestInfo | URL; init: RequestInit }> = [];
   const request = createApiFetch({

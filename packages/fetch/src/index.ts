@@ -179,7 +179,9 @@ function encodeBody(body: unknown, headers: Headers): BodyInit | null | undefine
     headers.delete("content-type");
     return body;
   }
-  if (body === undefined || !isJsonBody(body)) {
+  const jsonPrimitive =
+    isJson(headers.get("content-type")) && ["string", "number", "boolean"].includes(typeof body);
+  if (body === undefined || (!isJsonBody(body) && !jsonPrimitive)) {
     return body as BodyInit | null | undefined;
   }
   if (!headers.has("content-type")) {

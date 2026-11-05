@@ -96,7 +96,9 @@ JSON, text, `Blob` and `FormData` bodies can be sent again on a retry; a
   `{ tag: ["a", null], page: undefined }` becomes `?tag=a`. `Date` values are sent
   as ISO 8601 strings.
 - **Bodies**: plain objects, arrays and `null` are sent as JSON with
-  `content-type: application/json`, unless a content type is set. `FormData`, `Blob`
+  `content-type: application/json`, unless a content type is set. JSON scalar bodies
+  (strings, numbers and booleans) are serialized when the content type is JSON;
+  generated JSON operations supply that content type. `FormData`, `Blob`
   and other native bodies are passed through. For `FormData`, any configured or
   per-request content type is removed so `fetch` can set `multipart/form-data` with
   its boundary.

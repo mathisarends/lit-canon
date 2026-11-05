@@ -184,11 +184,17 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
         validateParameter(parameter, spec, `${method.toUpperCase()} ${path}`);
       }
       const operations = operationsByTag.get(tag) ?? new Map<string, Operation>();
+      const requestBody = operation.requestBody
+        ? resolveReference(operation.requestBody, spec, "Request bodies")
+        : undefined;
       operations.set(name, {
         path,
         method,
         hasQuery: [...parameters.values()].some((parameter) => parameter.in === "query"),
         hasHeaders: [...parameters.values()].some((parameter) => parameter.in === "header"),
+        jsonContentType: Object.keys(requestBody?.content ?? {}).find(
+          (type) => type === "application/json" || type.endsWith("+json"),
+        ),
         problems: config.problems === false ? [] : operationProblems(operation, spec),
       });
       operationsByTag.set(tag, operations);

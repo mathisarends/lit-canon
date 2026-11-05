@@ -6,6 +6,7 @@ export interface Operation {
   hasQuery: boolean;
   /** Header parameters, generated as a typed `headers` argument. */
   hasHeaders: boolean;
+  jsonContentType?: string;
   problems: ProblemType[];
 }
 
