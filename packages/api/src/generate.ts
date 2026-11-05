@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { generate as generateOrval } from "orval";
 import * as prettier from "prettier";
 import { isUrl, isJson, readInput, parseInput } from "./input.js";
@@ -11,13 +11,15 @@ import { renderProblems } from "./render-problems.js";
 import { validateExports } from "./validate-exports.js";
 import { collectOperations, identifier } from "./openapi.js";
 import { hasErrorCode, isWithin, listFiles, outputFiles } from "./files.js";
+import { camel } from "./naming.js";
 
-/** Generated clients import this package unless the config names its own request module. */
-const defaultRequestModule = "lit-canon-fetch";
+/** Generated clients import this package unless the config names another runtime. */
+const defaultRuntime = "lit-canon-fetch";
 
 /**
- * Orval reads the apiFetch signature from a mutator file. renderApi rewrites the generated
- * import, so this stub only has to match the signature exported by lit-canon-fetch.
+ * Orval reads the apiFetch signature from a mutator file. renderApi rewrites every call
+ * and the import, so this stub only has to produce Orval's (url, options) call shape,
+ * whichever runtime the generated client uses.
  */
 const mutatorStub = `export type ApiRequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
@@ -30,10 +32,6 @@ export function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T
 `;
 
 const tempPrefix = "lit-canon-api-";
-
-function resourceNamespace(tag: string): string {
-  return tag.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
-}
 
 function importPath(fromDirectory: string, target: string): string {
   let path = relative(fromDirectory, target).split(sep).join("/");
@@ -51,7 +49,9 @@ export async function generate(
   const remote = isUrl(config.input);
   const input = remote ? config.input : resolve(cwd, config.input);
   const output = resolve(cwd, config.output);
-  const requestPath = config.request ? resolve(cwd, config.request.path) : null;
+  const runtime = config.runtime ?? defaultRuntime;
+  // A runtime starting with "." or "/" is a file; anything else is a package name.
+  const requestPath = runtime.startsWith(".") || isAbsolute(runtime) ? resolve(cwd, runtime) : null;
   if (
     output === parse(output).root ||
     isWithin(output, cwd) ||
@@ -60,7 +60,7 @@ export async function generate(
   ) {
     throw new Error(`Output must be a dedicated generated directory: ${output}`);
   }
-  const preserved = new Set(config.preserveDirectories ?? []);
+  const preserved = new Set(config.preserve ?? []);
   for (const name of preserved) {
     if (
       typeof name !== "string" ||
@@ -76,17 +76,14 @@ export async function generate(
   if (!spec || !/^3\./.test(spec.openapi ?? "") || !spec.info || !spec.paths) {
     throw new Error("Input must be an OpenAPI 3 document with info and paths");
   }
-  const { operationsByTag, sourceTags, allTags, mutationOperations } = collectOperations(
-    spec,
-    config,
-  );
+  const { operationsByTag, sourceTags, allTags } = collectOperations(spec, config);
   const tags = [...operationsByTag.keys()].sort();
   const namespaces = new Set();
   for (const tag of tags) {
     if (preserved.has(tag)) {
       throw new Error(`Generated resource conflicts with a preserved directory: ${tag}`);
     }
-    const namespace = identifier(resourceNamespace(tag), "resource namespace");
+    const namespace = identifier(camel(tag), "resource namespace");
     if (namespaces.has(namespace)) {
       throw new Error(`Duplicate resource namespace: ${namespace}`);
     }
@@ -123,10 +120,8 @@ export async function generate(
   await mkdir(staged);
   let cleanup = true;
   try {
-    const mutatorPath = requestPath ?? join(temp, "mutator.ts");
-    if (!requestPath) {
-      await writeFile(mutatorPath, mutatorStub);
-    }
+    const mutatorPath = join(temp, "mutator.ts");
+    await writeFile(mutatorPath, mutatorStub);
     // Orval reads the same downloaded document instead of fetching it once per resource.
     const orvalInput = remote
       ? join(temp, isJson(source) ? "openapi.json" : "openapi.yaml")
@@ -136,9 +131,7 @@ export async function generate(
     }
     for (const tag of tags) {
       const resourceDir = join(staged, tag);
-      const requestImport = requestPath
-        ? importPath(join(output, tag), requestPath)
-        : defaultRequestModule;
+      const requestImport = requestPath ? importPath(join(output, tag), requestPath) : runtime;
       const operations = operationsByTag.get(tag)!;
       await generateOrval(
         {
@@ -146,7 +139,7 @@ export async function generate(
             target: orvalInput,
             filters:
               sourceTags.get(tag) === null
-                ? // The defaultTag resource: every operation without a tag.
+                ? // The fallback resource: every operation without a tag.
                   { mode: "exclude", tags: allTags }
                 : { tags: [sourceTags.get(tag)!] },
           },
@@ -166,7 +159,7 @@ export async function generate(
         workspace,
         { throwOnError: true, logLevel: "error" },
       );
-      const apiSource = renderApi(
+      const { source: apiSource, inputs } = renderApi(
         await readFile(join(resourceDir, "api.ts"), "utf8"),
         operations,
         header,
@@ -199,53 +192,41 @@ export async function generate(
       if (problems) {
         await writeFile(join(resourceDir, "problems.ts"), await format(problems));
       }
-      const { queries, mutations } = renderQueryFiles(tag, operations, apiSource, header, {
-        namespace: resourceNamespace(tag),
-        mutationOperations,
+      const { keys, queries, mutations } = renderQueryFiles(tag, operations, inputs, header, {
         requestImport,
       });
+      await writeFile(join(resourceDir, "keys.ts"), await format(keys));
       if (queries) {
         await writeFile(join(resourceDir, "queries.ts"), await format(queries));
       }
       if (mutations) {
         await writeFile(join(resourceDir, "mutations.ts"), await format(mutations));
       }
-      const runtimeExports = config.request?.exports ?? ["ApiError"];
-      const runtimeTypeExports = config.request?.typeExports ?? ["ApiProblem", "ApiRequestOptions"];
       const barrel = [
         header,
         "",
         'export * from "./api";',
         'export * from "./models";',
+        'export * from "./keys";',
         ...(problems ? ['export * from "./problems";'] : []),
         ...(queries ? ['export * from "./queries";'] : []),
         ...(mutations ? ['export * from "./mutations";'] : []),
-        ...(runtimeExports.length
-          ? [
-              `export { ${runtimeExports.map((name) => identifier(name, "request export")).join(", ")} } from ${JSON.stringify(requestImport)};`,
-            ]
-          : []),
-        ...(runtimeTypeExports.length
-          ? [
-              `export type { ${runtimeTypeExports.map((name) => identifier(name, "request type export")).join(", ")} } from ${JSON.stringify(requestImport)};`,
-            ]
-          : []),
         "",
       ].join("\n");
       validateExports({
         "api.ts": apiSource,
         "models.ts": modelsSource,
+        "keys.ts": keys,
         ...(problems ? { "problems.ts": problems } : {}),
         ...(queries ? { "queries.ts": queries } : {}),
         ...(mutations ? { "mutations.ts": mutations } : {}),
-        "request exports": barrel,
       });
       await writeFile(join(resourceDir, "index.ts"), await format(barrel));
     }
     await writeFile(
       join(staged, "index.ts"),
       await format(
-        `${rootHeader}\n\n${tags.map((tag) => `export * as ${resourceNamespace(tag)} from "./${tag}";`).join("\n")}\n`,
+        `${rootHeader}\n\n${tags.map((tag) => `export * as ${camel(tag)} from "./${tag}";`).join("\n")}\n`,
       ),
     );
     const files = await listFiles(staged);

@@ -5,14 +5,21 @@ import { defineConfig } from "lit-canon-api";
 export default defineConfig({
   input: "./openapi.json",
   output: "./src/api/generated",
-  // Leave out operations the app never calls, such as health checks.
-  excludeTags: ["system"],
-  // Operations without an OpenAPI tag form the "general" resource.
-  defaultTag: "general",
-  // GET operations that change state and must not be cached or refetched.
-  mutationOperations: ["start_login", "complete_login"],
+  tags: {
+    // Leave out operations the app never calls, such as health checks.
+    exclude: ["system"],
+    // Operations without an OpenAPI tag form the "general" resource.
+    fallback: "general",
+  },
+  operations: {
+    // GET operations that change state and must not be cached or refetched.
+    startLogin: "mutation",
+    completeLogin: "mutation",
+    // A POST that only reads data, so it can be cached like a GET.
+    searchProducts: "query",
+  },
   // Emit problem types for every resource, even those without problem responses.
   problems: true,
   // A sibling generator owns src/api/generated/rpc; keep it during regeneration.
-  preserveDirectories: ["rpc"],
+  preserve: ["rpc"],
 });

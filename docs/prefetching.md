@@ -31,8 +31,8 @@ The OpenAPI input supports the same local JSON/YAML files and HTTP(S) URLs as ge
 Repeat `--query` and `--bind` for several independent start queries. The initial
 scaffold supports string inputs bound to route parameters; optional inputs are
 omitted. Required query objects, number conversions, search parameters and dependent
-queries need explicit application code after scaffolding. Only included GET queries
-are eligible; operations configured as mutations are rejected.
+queries need explicit application code after scaffolding. Only operations generated
+as queries are eligible; mutations and queries that need a request body are rejected.
 
 The command creates:
 
@@ -70,7 +70,7 @@ export type ProductsDetailParams = PageParams<"/products/:id">;
 
 export const productsDetailQueries = ({ id }: ProductsDetailParams) => ({
   product: queryOptions({
-    ...products.getProductQuery(id),
+    ...products.getProductQuery({ productId: id }),
     staleTime: 30_000,
   }),
 });

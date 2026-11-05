@@ -29,7 +29,9 @@ For app composition (pages, features, guards, providers), see the
 - [Architecture](architecture.md): generation flow and source maps of the packages.
 - [Agent guide](agents.md): canonical app usage, behaviors to preserve and checks.
 - [Decisions](decisions/): recorded design decisions, starting with
-  [0001: Orval post-processing](decisions/0001-orval-postprocessing.md).
+  [0001: Orval post-processing](decisions/0001-orval-postprocessing.md). The 2.0 API
+  shape is recorded in
+  [0003: operation inputs and grouped configuration](decisions/0003-operation-inputs-and-config-2.md).
 
 The guides describe the current implementation. When behavior changes, update the
 relevant page alongside the code and examples.

@@ -1,6 +1,22 @@
 import ts from "typescript";
 import { camelPathParamName, parseRoutePath } from "@orval/core";
 import type { Operation, Operations } from "./operation.js";
+import { upperFirst } from "./naming.js";
+
+/** The single input object of a generated function, e.g. `GetProductInput`. */
+export interface OperationInput {
+  type: string;
+  /** True when every field is optional, so the input may be left out. */
+  optional: boolean;
+}
+
+/** Input per operation name; null for operations without inputs. */
+export type OperationInputs = Map<string, OperationInput | null>;
+
+interface Part {
+  type: string;
+  optional: boolean;
+}
 
 function variableDeclaration(statement: ts.Statement): ts.VariableDeclaration {
   if (!ts.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) {
@@ -9,6 +25,7 @@ function variableDeclaration(statement: ts.Statement): ts.VariableDeclaration {
   return statement.declarationList.declarations[0];
 }
 
+/** The body Orval passes to its fetch call, e.g. `note` for `JSON.stringify(note)`. */
 function requestBody(
   options: ts.ObjectLiteralExpression,
   sourceFile: ts.SourceFile,
@@ -46,10 +63,17 @@ function requestBody(
   return body;
 }
 
-function urlExpression(path: string, parameterNames: Set<string>): string {
-  const tokens = parseRoutePath(path);
+function pathParameters(operation: Operation) {
+  return operation.parameters.flatMap((parameter) =>
+    parameter.in === "path" ? [{ field: parameter.name, variable: parameter.variable! }] : [],
+  );
+}
+
+function pathExpression(operation: Operation): string {
+  const tokens = parseRoutePath(operation.path);
+  const names = new Set(pathParameters(operation).map((parameter) => parameter.variable));
   if (!tokens.some((token) => token.kind === "param")) {
-    return JSON.stringify(path);
+    return JSON.stringify(operation.path);
   }
   const template = tokens
     .map((token) => {
@@ -60,8 +84,8 @@ function urlExpression(path: string, parameterNames: Set<string>): string {
           .replace(/\$\{/g, "\\${");
       }
       const name = camelPathParamName(token.name);
-      if (!parameterNames.has(name)) {
-        throw new Error(`Missing path parameter ${token.name} in ${path}`);
+      if (!names.has(name)) {
+        throw new Error(`Missing path parameter ${token.name} in ${operation.path}`);
       }
       return "${encodeURIComponent(" + name + ")}";
     })
@@ -87,11 +111,36 @@ function isFormDataAppend(statement: ts.Statement, sourceFile: ts.SourceFile): b
   );
 }
 
+/** The statement's text with references to `from` renamed to `to`; property names stay. */
+function rename(node: ts.Node, sourceFile: ts.SourceFile, from: string, to: string): string {
+  const positions: number[] = [];
+  const visit = (child: ts.Node): void => {
+    const parent = child.parent;
+    if (
+      ts.isIdentifier(child) &&
+      child.text === from &&
+      !(ts.isPropertyAccessExpression(parent) && parent.name === child) &&
+      !(ts.isPropertyAssignment(parent) && parent.name === child)
+    ) {
+      positions.push(child.getStart(sourceFile));
+    }
+    ts.forEachChild(child, visit);
+  };
+  visit(node);
+  const start = node.getStart(sourceFile);
+  let text = node.getText(sourceFile);
+  for (const position of positions.reverse()) {
+    const offset = position - start;
+    text = text.slice(0, offset) + to + text.slice(offset + from.length);
+  }
+  return text;
+}
+
 function renderOperation(
   declaration: ts.VariableDeclaration,
   operation: Operation,
   sourceFile: ts.SourceFile,
-): string {
+): { source: string; input: OperationInput | null } {
   const name = declaration.name.getText(sourceFile);
   const arrow = declaration.initializer;
   if (!arrow || !ts.isArrowFunction(arrow) || !ts.isBlock(arrow.body)) {
@@ -108,7 +157,60 @@ function renderOperation(
   ) {
     throw new Error(`Missing API fetch call in ${name}`);
   }
-  const setup = [];
+  const orvalCall = last.expression;
+  if (
+    orvalCall.expression.getText(sourceFile) !== "apiFetch" ||
+    orvalCall.arguments.length !== 2 ||
+    !ts.isObjectLiteralExpression(orvalCall.arguments[1])
+  ) {
+    throw new Error(`Unexpected request call in ${name}`);
+  }
+  const bodyExpression = requestBody(orvalCall.arguments[1], sourceFile);
+  const responseType = orvalCall.typeArguments?.[0]?.getText(sourceFile);
+  if (!responseType || !arrow.type) {
+    throw new Error(`Missing response type in ${name}`);
+  }
+
+  // Sort Orval's positional parameters into the fields of one input object.
+  const pathFields = new Map(
+    pathParameters(operation).map((parameter) => [parameter.variable, parameter.field]),
+  );
+  const hasQuery = operation.parameters.some((parameter) => parameter.in === "query");
+  const hasHeaders = operation.parameters.some((parameter) => parameter.in === "header");
+  const path: Array<{ field: string; variable: string; type: string }> = [];
+  let query: Part | undefined;
+  let headers: Part | undefined;
+  let body: (Part & { orvalName: string }) | undefined;
+  const parameters = [...arrow.parameters];
+  const options = parameters.pop();
+  if (!options || options.name.getText(sourceFile) !== "options" || !options.questionToken) {
+    throw new Error(`Missing request options in ${name}`);
+  }
+  for (const parameter of parameters) {
+    const parameterName = parameter.name.getText(sourceFile);
+    const type = parameter.type?.getText(sourceFile);
+    if (!type) {
+      throw new Error(`Missing parameter type in ${name}: ${parameterName}`);
+    }
+    const part = { type, optional: Boolean(parameter.questionToken) };
+    const field = pathFields.get(parameterName);
+    if (field !== undefined) {
+      path.push({ field, variable: parameterName, type });
+    } else if (parameterName === "params" && hasQuery && !query) {
+      query = part;
+    } else if (parameterName === "headers" && hasHeaders && !headers) {
+      headers = part;
+    } else if (!body && bodyExpression !== undefined) {
+      body = { ...part, orvalName: parameterName };
+    } else {
+      throw new Error(`Unexpected Orval parameter in ${name}: ${parameterName}`);
+    }
+  }
+  if (path.length !== pathFields.size || (hasQuery && !query) || (hasHeaders && !headers)) {
+    throw new Error(`Missing parameters in generated operation ${name}`);
+  }
+
+  const setup: string[] = [];
   for (const statement of statements.slice(0, -1)) {
     if (ts.isVariableStatement(statement)) {
       const helper = variableDeclaration(statement);
@@ -124,81 +226,81 @@ function renderOperation(
         continue;
       }
     }
-    if (isFormDataAppend(statement, sourceFile)) {
-      setup.push(statement.getText(sourceFile));
+    if (body && isFormDataAppend(statement, sourceFile)) {
+      setup.push(rename(statement, sourceFile, body.orvalName, "body"));
       continue;
     }
     throw new Error(`Unexpected Orval helper in ${name}`);
   }
-
-  const call = last.expression;
-  if (call.expression.getText(sourceFile) !== "apiFetch" || call.arguments.length !== 2) {
-    throw new Error(`Unexpected request call in ${name}`);
-  }
-  const options = call.arguments[1];
-  if (!ts.isObjectLiteralExpression(options)) {
-    throw new Error(`Missing request options in ${name}`);
-  }
-  const body = requestBody(options, sourceFile);
-  const parameterNames = new Set(
-    arrow.parameters.map((parameter) => parameter.name.getText(sourceFile)),
-  );
-  const useRequestName = body && parameterNames.has(body) && !parameterNames.has("request");
-  const parameters = arrow.parameters.map((parameter) => {
-    let text = parameter
-      .getText(sourceFile)
-      .replace("Parameters<typeof apiFetch>[1]", "ApiRequestOptions");
-    if (useRequestName && parameter.name.getText(sourceFile) === body) {
-      text = `request${text.slice(body.length)}`;
-    }
-    return text;
-  });
-  const url = urlExpression(operation.path, parameterNames);
-  const fetchOptions = [`...options`, `method: ${JSON.stringify(operation.method.toUpperCase())}`];
-  if (operation.hasQuery) {
-    if (!parameterNames.has("params")) {
-      throw new Error(`Missing query params in ${name}`);
-    }
-    fetchOptions.push("query: params");
-  }
+  let bodyValue: string | undefined;
   if (body) {
-    fetchOptions.push(`body: ${useRequestName ? "request" : body}`);
-  }
-  if (operation.hasHeaders || operation.jsonContentType) {
-    if (
-      (operation.hasHeaders && !parameterNames.has("headers")) ||
-      parameterNames.has("requestHeaders")
-    ) {
-      throw new Error(`Missing or conflicting header params in ${name}`);
+    if (bodyExpression === body.orvalName) {
+      bodyValue = "body";
+    } else if (bodyExpression === "formData" && setup.length) {
+      bodyValue = "body: formData";
+    } else {
+      throw new Error(`Unexpected request body in ${name}: ${bodyExpression}`);
     }
-    // Header parameters fill in what the call site's options.headers leave unset.
-    setup.push(`const requestHeaders = new Headers(options?.headers);`);
-    if (operation.jsonContentType) {
-      setup.push(
-        `if (!requestHeaders.has("content-type")) requestHeaders.set("content-type", ${JSON.stringify(operation.jsonContentType)});`,
-      );
-    }
-    if (operation.hasHeaders)
-      setup.push(`for (const [key, value] of Object.entries(headers ?? {})) {
-        if (value !== undefined && value !== null && !requestHeaders.has(key)) {
-          requestHeaders.set(key, String(value));
-        }
-      }`);
-    fetchOptions.push("headers: requestHeaders");
+  } else if (bodyExpression !== undefined) {
+    throw new Error(`Missing request body parameter in ${name}`);
   }
 
-  const responseType = call.typeArguments?.[0]?.getText(sourceFile);
-  if (!responseType || !arrow.type) {
-    throw new Error(`Missing response type in ${name}`);
-  }
-  if (!setup.length) {
-    return `export const ${name} = (${parameters.join(", ")}): ${arrow.type.getText(sourceFile)} =>
-      apiFetch<${responseType}>(${url}, { ${fetchOptions.join(", ")} });`;
-  }
-  return `export const ${name} = (${parameters.join(", ")}): ${arrow.type.getText(sourceFile)} => {
-    ${setup.join("\n")}
-    return apiFetch<${responseType}>(${url}, { ${fetchOptions.join(", ")} });
-  };`;
+  const fields = [
+    ...path.map((parameter) => `${parameter.field}: ${parameter.type};`),
+    ...(headers ? [`headers${headers.optional ? "?" : ""}: ${headers.type};`] : []),
+    ...(body ? [`body${body.optional ? "?" : ""}: ${body.type};`] : []),
+  ];
+  const parts = [
+    ...(query ? [query.type] : []),
+    ...(fields.length ? [`{ ${fields.join(" ")} }`] : []),
+  ];
+  const input: OperationInput | null = parts.length
+    ? {
+        type: `${upperFirst(name)}Input`,
+        optional:
+          !path.length &&
+          (!query || query.optional) &&
+          (!headers || headers.optional) &&
+          (!body || body.optional),
+      }
+    : null;
+
+  const names = path.map(({ field, variable }) =>
+    field === variable ? field : `${field}: ${variable}`,
+  );
+  if (headers) names.push("headers");
+  if (body) names.push("body");
+  const pattern = !query
+    ? `{ ${names.join(", ")} }`
+    : names.length
+      ? `{ ${names.join(", ")}, ...query }`
+      : "query";
+  const signature = [
+    ...(input ? [`${pattern}: ${input.type}${input.optional ? " = {}" : ""}`] : []),
+    "options?: ApiRequestOptions",
+  ];
+
+  const request = [
+    `method: ${JSON.stringify(operation.method.toUpperCase())}`,
+    `path: ${pathExpression(operation)}`,
+    ...(query ? ["query"] : []),
+    ...(headers ? ["headers"] : []),
+    ...(bodyValue ? [bodyValue] : []),
+    // The runtime serializes scalar bodies as JSON only for a JSON media type.
+    ...(operation.jsonContentType
+      ? [`contentType: ${JSON.stringify(operation.jsonContentType)}`]
+      : []),
+  ];
+  const call = `apiFetch<${responseType}>({ ${request.join(", ")} }, options)`;
+  const returnType = arrow.type.getText(sourceFile);
+  const fn = setup.length
+    ? `export const ${name} = (${signature.join(", ")}): ${returnType} => {
+        ${setup.join("\n")}
+        return ${call};
+      };`
+    : `export const ${name} = (${signature.join(", ")}): ${returnType} => ${call};`;
+  const source = input ? `export type ${input.type} = ${parts.join(" & ")};\n\n${fn}` : fn;
+  return { source, input };
 }
 
 export function renderApi(
@@ -206,7 +308,7 @@ export function renderApi(
   operations: Operations,
   header: string,
   requestImport: string,
-): string {
+): { source: string; inputs: OperationInputs } {
   const sourceFile = ts.createSourceFile("api.ts", source, ts.ScriptTarget.Latest, true);
   const modelImport = sourceFile.statements.find(
     (statement) =>
@@ -215,7 +317,7 @@ export function renderApi(
       /^\.\/api\.schemas(?:\.js)?$/.test(statement.moduleSpecifier.text),
   );
   const functions = [];
-  const found = new Set();
+  const inputs: OperationInputs = new Map();
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) {
       continue;
@@ -229,20 +331,24 @@ export function renderApi(
     if (!operation) {
       throw new Error(`Unknown generated operation: ${name}`);
     }
-    found.add(name);
-    functions.push(renderOperation(declaration, operation, sourceFile));
+    const rendered = renderOperation(declaration, operation, sourceFile);
+    inputs.set(name, rendered.input);
+    functions.push(rendered.source);
   }
-  if (found.size !== operations.size) {
-    throw new Error(`Expected ${operations.size} API operations, generated ${found.size}`);
+  if (inputs.size !== operations.size) {
+    throw new Error(`Expected ${operations.size} API operations, generated ${inputs.size}`);
   }
 
-  return [
-    header,
-    ...(modelImport
-      ? [modelImport.getText(sourceFile).replace(/\.\/api\.schemas(?:\.js)?/, "./models")]
-      : []),
-    `import { apiFetch, type ApiRequestOptions } from ${JSON.stringify(requestImport)};`,
-    ...functions,
-    "",
-  ].join("\n\n");
+  return {
+    source: [
+      header,
+      ...(modelImport
+        ? [modelImport.getText(sourceFile).replace(/\.\/api\.schemas(?:\.js)?/, "./models")]
+        : []),
+      `import { apiFetch, type ApiRequestOptions } from ${JSON.stringify(requestImport)};`,
+      ...functions,
+      "",
+    ].join("\n\n"),
+    inputs,
+  };
 }

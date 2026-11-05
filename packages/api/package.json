@@ -1,6 +1,6 @@
 {
   "name": "lit-canon-api",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Generate typed TypeScript API clients, query keys and TanStack Lit Query options from OpenAPI.",
   "repository": {
     "type": "git",

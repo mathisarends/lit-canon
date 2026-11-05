@@ -2,6 +2,7 @@ import { pascal, sanitize } from "@orval/core";
 import type { OpenAPIV3 } from "@scalar/openapi-types";
 import type { Operations } from "./operation.js";
 import { resolveReference } from "./references.js";
+import { pascal as pascalTag, upperFirst } from "./naming.js";
 
 export interface ProblemType {
   name: string;
@@ -73,10 +74,6 @@ export function operationProblems(
   return [...problems.values()];
 }
 
-function typeName(name: string): string {
-  return name[0].toUpperCase() + name.slice(1);
-}
-
 function union(members: string[]): string {
   return members.length ? members.join(" | ") : "never";
 }
@@ -115,9 +112,9 @@ export function renderProblems(
   if (!problems.length && !includeEmpty) {
     return null;
   }
-  const prefix = typeName(tag.replace(/-([a-z0-9])/g, (_, character) => character.toUpperCase()));
+  const prefix = pascalTag(tag);
   const schemas = [...new Set(problems.map((problem) => problem.name))].sort();
-  const operationTypes = [...operations.keys()].map((name) => `${typeName(name)}Problem`);
+  const operationTypes = [...operations.keys()].map((name) => `${upperFirst(name)}Problem`);
   const declarations = [
     ...operationTypes,
     `${prefix}Problem`,
@@ -142,7 +139,7 @@ export function renderProblems(
     ].join("\n"),
     ...[...operations].map(
       ([name, operation]) =>
-        `export type ${typeName(name)}Problem = ${union(operation.problems.map((problem) => problem.name))};`,
+        `export type ${upperFirst(name)}Problem = ${union(operation.problems.map((problem) => problem.name))};`,
     ),
     `export type ${prefix}Problem = ${union(operationTypes)};`,
     `export type ${prefix}ProblemCode = ${codeType};`,

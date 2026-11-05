@@ -5,7 +5,6 @@
 
 export * from "./api";
 export * from "./models";
+export * from "./keys";
 export * from "./queries";
 export * from "./mutations";
-export { ApiError } from "lit-canon-fetch";
-export type { ApiProblem, ApiRequestOptions } from "lit-canon-fetch";

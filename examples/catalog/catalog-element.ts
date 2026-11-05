@@ -14,7 +14,7 @@ export class ProductCatalog extends LitElement {
     ...products.createProductMutation(),
     // Decide which data to refresh in the application, after a successful write.
     onSuccess: (_product, _variables, _onMutateResult, { client }) =>
-      client.invalidateQueries({ queryKey: products.productsKeys.all }),
+      client.invalidateQueries({ queryKey: products.keys.all }),
   }));
 
   override render() {
@@ -30,7 +30,7 @@ export class ProductCatalog extends LitElement {
       </ul>
       <button
         ?disabled=${creation.isPending}
-        @click=${() => this.createProduct.mutate({ request: { name: "Notebook", price: 12.5 } })}
+        @click=${() => this.createProduct.mutate({ body: { name: "Notebook", price: 12.5 } })}
       >
         Add a notebook
       </button>

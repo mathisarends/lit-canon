@@ -9,8 +9,9 @@ inspect them on GitHub without installing or running anything.
 | [openapi.json](openapi.json)                                       | Handwritten input: list, get, create and update product endpoints       |
 | [lit-canon-api.config.ts](lit-canon-api.config.ts)                 | Generator configuration: input file and output directory                |
 | [generated/products/models.ts](generated/products/models.ts)       | Generated request, response and query parameter types                   |
-| [generated/products/api.ts](generated/products/api.ts)             | Generated typed fetch functions                                         |
-| [generated/products/queries.ts](generated/products/queries.ts)     | Generated `productsKeys` factory and query options for GET operations   |
+| [generated/products/api.ts](generated/products/api.ts)             | Generated typed fetch functions and their input types                   |
+| [generated/products/keys.ts](generated/products/keys.ts)           | Generated `keys` factory for queries and mutations                      |
+| [generated/products/queries.ts](generated/products/queries.ts)     | Generated query options for GET operations                              |
 | [generated/products/mutations.ts](generated/products/mutations.ts) | Generated mutation options for POST and PUT operations                  |
 | [generated/index.ts](generated/index.ts)                           | Generated entry point exporting the `products` namespace                |
 | [catalog-element.ts](catalog-element.ts)                           | Handwritten Lit component: list products, create one, refresh the cache |
@@ -41,9 +42,12 @@ Inside a TypeScript application with bundler module resolution:
 import { products } from "./generated";
 
 const catalog = await products.listProducts({ limit: 20 }); // Product[]
-const product = await products.getProduct("p-1"); // Product
-const created = await products.createProduct({ name: "Notebook", price: 12.5 });
-await products.updateProduct(created.id, { name: "Large notebook", price: 15 });
+const product = await products.getProduct({ productId: "p-1" }); // Product
+const created = await products.createProduct({ body: { name: "Notebook", price: 12.5 } });
+await products.updateProduct({
+  productId: created.id,
+  body: { name: "Large notebook", price: 15 },
+});
 ```
 
 `lit-canon-fetch` sends query parameters and JSON bodies, handles HTTP errors and
@@ -55,24 +59,25 @@ returns the response body. `getProduct` and `updateProduct` encode the path para
 `queryClientContext`. [`catalog-element.ts`](catalog-element.ts) creates its
 controllers without a client argument, so they take the client from that context. The
 query reads products with inferred `Product[]` data. The mutation takes
-`{ request: ProductInput }` and invalidates every product query through
-`productsKeys.all` on success, using the client TanStack passes to `onSuccess`.
+`{ body: ProductInput }` and invalidates every product query through
+`products.keys.all` on success, using the client TanStack passes to `onSuccess`.
 Loading, errors, rendering and cache invalidation are application code.
 
-Mutations take one object named after the operation's parameters:
+Mutations take the same input object as the API function:
 
 ```ts
 // Inside a LitElement rendered below the provider:
 const update = createMutationController(this, () => products.updateProductMutation());
-update.mutate({ productId: "p-1", request: { name: "Large notebook", price: 15 } });
+update.mutate({ productId: "p-1", body: { name: "Large notebook", price: 15 } });
 ```
 
-The key factory covers every query of the resource:
+The key factory covers every operation of the resource:
 
 ```ts
-products.productsKeys.all; // ["products"]
-products.productsKeys.listProducts({ limit: 20 }); // ["products", "listProducts", { limit: 20 }]
-products.productsKeys.getProduct("p-1"); // ["products", "getProduct", "p-1"]
+products.keys.all; // ["products"]
+products.keys.listProducts(); // ["products", "listProducts"]: every list query
+products.keys.listProducts({ limit: 20 }); // ["products", "listProducts", { limit: 20 }]
+products.keys.getProduct({ productId: "p-1" }); // ["products", "getProduct", { productId: "p-1" }]
 ```
 
 To use the full example, copy it into a Lit application, install the dependencies

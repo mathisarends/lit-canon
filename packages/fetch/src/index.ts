@@ -53,22 +53,43 @@ export class ApiError<
   }
 }
 
-export type ApiRequestOptions = Omit<RequestInit, "body"> & {
-  body?: unknown;
+/** Per-call fetch options, e.g. `signal`, `headers` or `cache`. */
+export type ApiRequestOptions = Omit<RequestInit, "body" | "method">;
+
+/** The request a generated function describes; apps rarely write one by hand. */
+export interface ApiRequest {
+  /** The HTTP method, e.g. "GET"; any letter case. */
+  method: string;
+  /** A path appended to `baseUrl`, or an absolute URL. */
+  path: string;
+  /** Query parameters. Arrays repeat the key; null and undefined are left out. */
   query?: object;
-};
+  /** Header parameters; per-call `headers` in the options take precedence. */
+  headers?: object;
+  body?: unknown;
+  /**
+   * The request media type. JSON types (`application/json`, `*+json`) serialize the
+   * body as JSON, including strings and numbers. Without it, plain objects and arrays
+   * are sent as JSON and other bodies as they are.
+   */
+  contentType?: string;
+}
 
 export interface ApiFetchConfig {
   baseUrl?: string;
+  /**
+   * Defaults to "same-origin", the fetch default. Set "include" to send cookies to an
+   * API on another origin.
+   */
   credentials?: RequestCredentials;
   /**
-   * Static headers, or a function called before every request with the path from the
-   * generated client (before `baseUrl` and the query string) and the upper-case method.
-   * Per-request headers override these.
+   * Static headers, or a function called before every request with the request path
+   * (before `baseUrl` and the query string) and the upper-case method. Header
+   * parameters and per-call headers override these.
    */
   headers?:
     | HeadersInit
-    | ((request: { url: string; method: string }) => HeadersInit | Promise<HeadersInit>);
+    | ((request: { path: string; method: string }) => HeadersInit | Promise<HeadersInit>);
   fetch?: typeof globalThis.fetch;
   /**
    * Wraps every request, first entry outermost. A middleware can change the request,
@@ -161,13 +182,25 @@ function toProblem(value: unknown): ApiProblem | null {
   return candidate as ApiProblem;
 }
 
-/** Config headers first, then per-request headers on top. */
+/** Config headers, then the content type and header parameters, then per-call headers. */
 async function resolveHeaders(
   defaults: ApiFetchConfig["headers"],
-  request: { url: string; method: string },
+  request: ApiRequest & { method: string },
   overrides: HeadersInit | undefined,
 ): Promise<Headers> {
-  const headers = new Headers(typeof defaults === "function" ? await defaults(request) : defaults);
+  const headers = new Headers(
+    typeof defaults === "function"
+      ? await defaults({ path: request.path, method: request.method })
+      : defaults,
+  );
+  if (request.contentType) {
+    headers.set("content-type", request.contentType);
+  }
+  for (const [key, value] of Object.entries(request.headers ?? {})) {
+    if (value !== null && value !== undefined) {
+      headers.set(key, String(value));
+    }
+  }
   new Headers(overrides).forEach((value, key) => headers.set(key, value));
   return headers;
 }
@@ -238,24 +271,29 @@ async function readResponse<T>(response: Response, method: string, url: string):
   }
 }
 
-export function createApiFetch(config: ApiFetchConfig = {}) {
+export type ApiFetch = <T>(request: ApiRequest, options?: ApiRequestOptions) => Promise<T>;
+
+export function createApiFetch(config: ApiFetchConfig = {}): ApiFetch {
   const baseUrl = config.baseUrl?.replace(/\/+$/, "") ?? "";
 
-  return async function apiFetch<T>(url: string, options: ApiRequestOptions = {}): Promise<T> {
-    const { body, query, headers: requestHeaders, ...init } = options;
-    const method = (init.method ?? "GET").toUpperCase();
-    const headers = await resolveHeaders(config.headers, { url, method }, requestHeaders);
-    const encodedBody = encodeBody(body, headers);
-    const target = ABSOLUTE_URL.test(url) ? url : baseUrl + url;
+  return async function apiFetch<T>(
+    request: ApiRequest,
+    options: ApiRequestOptions = {},
+  ): Promise<T> {
+    const { headers: callHeaders, ...init } = options;
+    const method = request.method.toUpperCase();
+    const headers = await resolveHeaders(config.headers, { ...request, method }, callHeaders);
+    const body = encodeBody(request.body, headers);
+    const target = ABSOLUTE_URL.test(request.path) ? request.path : baseUrl + request.path;
     const send = config.fetch ?? globalThis.fetch;
-    const request: ApiFetchRequest = {
-      url: withQuery(target, query),
+    const fetchRequest: ApiFetchRequest = {
+      url: withQuery(target, request.query),
       init: {
         ...init,
         method,
-        credentials: init.credentials ?? config.credentials ?? "include",
+        credentials: init.credentials ?? config.credentials ?? "same-origin",
         headers,
-        body: encodedBody,
+        body,
       },
     };
     const run = (config.middleware ?? []).reduceRight<
@@ -264,9 +302,9 @@ export function createApiFetch(config: ApiFetchConfig = {}) {
       (next, middleware) => (current) => middleware(current, next),
       (current) => send(current.url, current.init),
     );
-    const response = await run(request);
+    const response = await run(fetchRequest);
     // response.url is the final URL after redirects; it is empty for synthetic responses.
-    return readResponse<T>(response, method, response.url || request.url);
+    return readResponse<T>(response, method, response.url || fetchRequest.url);
   };
 }
 
@@ -277,6 +315,6 @@ export function configureApiFetch(config: ApiFetchConfig): void {
   defaultFetch = createApiFetch(config);
 }
 
-export function apiFetch<T>(url: string, options?: ApiRequestOptions): Promise<T> {
-  return defaultFetch<T>(url, options);
+export function apiFetch<T>(request: ApiRequest, options?: ApiRequestOptions): Promise<T> {
+  return defaultFetch<T>(request, options);
 }

@@ -12,22 +12,20 @@ import { configureApiFetch } from "lit-canon-fetch";
 configureApiFetch({ baseUrl: "https://api.example.com" });
 ```
 
-Without configuration, requests use relative API paths and send cookies with
-`credentials: "include"`. `ApiFetchConfig` accepts:
+Without configuration, requests use relative API paths and send cookies only to the
+same origin. `ApiFetchConfig` accepts:
 
 | Option        | Purpose                                                               |
 | ------------- | --------------------------------------------------------------------- |
 | `baseUrl`     | Prefix for relative paths. A trailing slash is removed.               |
-| `credentials` | Default `RequestInit.credentials`; defaults to `"include"`.           |
+| `credentials` | Default `RequestInit.credentials`; defaults to `"same-origin"`.       |
 | `headers`     | Static `HeadersInit`, or a function that returns headers per request. |
 | `fetch`       | A custom `fetch` implementation, for example in tests.                |
 | `middleware`  | Functions that wrap every request; see [middleware](#middleware).     |
 
-> [!WARNING]
-> The `"include"` default sends cookies with every request, also when `baseUrl`
-> points to another origin. It suits APIs with cookie sessions. For token-based APIs,
-> or when `baseUrl` is a third-party service, set `credentials: "same-origin"` (the
-> `fetch` default) or `"omit"`.
+The `"same-origin"` default matches `fetch`. If the API runs on another origin and
+uses cookie sessions, set `credentials: "include"`; the server must then allow
+credentials in its CORS response.
 
 `createApiFetch(config)` returns an independent `apiFetch` function with its own
 configuration, for a second API or for tests.
@@ -42,9 +40,9 @@ string) and the upper-case HTTP method:
 import { configureApiFetch } from "lit-canon-fetch";
 
 configureApiFetch({
-  headers: async ({ url, method }): Promise<HeadersInit> => {
+  headers: async ({ path, method }): Promise<HeadersInit> => {
     const token = await getToken();
-    return url.startsWith("/admin")
+    return path.startsWith("/admin")
       ? { authorization: `Bearer ${token}`, "x-request-method": method }
       : { authorization: `Bearer ${token}` };
   },
@@ -52,8 +50,10 @@ configureApiFetch({
 ```
 
 The `Promise<HeadersInit>` return annotation helps TypeScript when the branches
-return objects with different keys. Per-request headers override configured
-headers, and per-request credentials override the configured credentials.
+return objects with different keys. Headers are applied in this order, later ones
+winning: configured headers, the request content type, header parameters from the
+operation input, and the `headers` option of the call. Per-request credentials
+override the configured credentials.
 
 ## Middleware
 
@@ -91,6 +91,9 @@ JSON, text, `Blob` and `FormData` bodies can be sent again on a retry; a
 
 ## Requests and responses
 
+- **Requests**: generated functions describe each request as one object,
+  `{ method, path, query, headers, body, contentType }`, and pass it to `apiFetch`
+  with the call's `ApiRequestOptions`.
 - **Query parameters** come from the `query` object. Arrays become repeated
   parameters. `null` and `undefined` are omitted, also inside arrays, so
   `{ tag: ["a", null], page: undefined }` becomes `?tag=a`. `Date` values are sent
@@ -124,7 +127,7 @@ import { ApiError } from "lit-canon-fetch";
 import { products } from "./api/generated";
 
 try {
-  await products.getProduct("p-1");
+  await products.getProduct({ productId: "p-1" });
 } catch (error) {
   if (error instanceof ApiError) {
     console.error(error.status, error.problem?.detail ?? error.message);
@@ -149,13 +152,13 @@ Every `ApiError` from the runtime also carries the request and response details:
 | `headers` | The response headers, for example `Retry-After` or `WWW-Authenticate`. |
 | `body`    | The raw response body text, also when it is not a problem object.      |
 
-Each generated resource re-exports `ApiError`, `ApiProblem` and `ApiRequestOptions`.
-For typed problem details per resource, see
+Import `ApiError`, `ApiProblem` and `ApiRequestOptions` from `lit-canon-fetch`; the
+generated resources do not re-export them. For typed problem details per resource, see
 [configuration](configuration.md#project-specific-options).
 
 ## Custom request module
 
-To route generated requests through your own module, configure its path:
+To route generated requests through your own module, name it as the runtime:
 
 ```ts
 import { defineConfig } from "lit-canon-api";
@@ -163,19 +166,21 @@ import { defineConfig } from "lit-canon-api";
 export default defineConfig({
   input: "./openapi.json",
   output: "./src/api/generated",
-  request: {
-    path: "./src/api/request.ts",
-    exports: ["ApiError"],
-    typeExports: ["ApiProblem", "ApiRequestOptions"],
-  },
+  runtime: "./src/api/request.ts",
 });
 ```
 
-The module must export `apiFetch<T>(url, options): Promise<T>` and
-`ApiRequestOptions`. The options contain an unserialized `body`, a `query` object
-and fetch options. `exports` and `typeExports` list what each resource re-exports;
-set them to `[]` if your module exposes different symbols. With a custom module,
-`lit-canon-fetch` is not needed at runtime.
+A value starting with `.` or `/` is a file relative to the config; anything else, such
+as `@acme/api-runtime`, is imported as a package. The module must export:
+
+- `apiFetch<T>(request: ApiRequest, options?: ApiRequestOptions): Promise<T>`, where
+  `request` is `{ method, path, query?, headers?, body?, contentType? }` with an
+  unserialized `body`;
+- the type `ApiRequestOptions`, the per-call options generated functions accept;
+- a generic `ApiError<P>` class when problem helpers are generated.
+
+The simplest module wraps `createApiFetch` from `lit-canon-fetch` and re-exports its
+types. With a module that does not use it, `lit-canon-fetch` is not needed at runtime.
 
 ## Exports
 
@@ -186,8 +191,12 @@ set them to `[]` if your module exposes different symbols. With a custom module,
 | `createApiFetch`    | function | Creates an independent `apiFetch` with its own defaults.    |
 | `ApiError`          | class    | Thrown for non-2xx responses; `status`, `problem`, details. |
 | `ApiErrorDetails`   | type     | The optional third `ApiError` constructor argument.         |
+| `ApiFetch`          | type     | The signature of `apiFetch`.                                |
+| `ApiRequest`        | type     | The request object generated functions pass to `apiFetch`.  |
 | `ApiProblem`        | type     | RFC 9457 problem details.                                   |
-| `ApiRequestOptions` | type     | `RequestInit` plus `body` and `query`.                      |
+| `ApiRequestOptions` | type     | Per-call `RequestInit` options without `body` and `method`. |
 | `ApiFetchConfig`    | type     | The options of `configureApiFetch` and `createApiFetch`.    |
+| `ApiFetchRequest`   | type     | The request as middleware sees it.                          |
+| `ApiMiddleware`     | type     | A middleware function.                                      |
 
 [All documentation](README.md)

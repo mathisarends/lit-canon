@@ -16,8 +16,8 @@ let root: string;
 const config = {
   input: "openapi.json",
   output: "generated",
-  excludeTags: ["system"],
-  mutationOperations: ["start_login"],
+  tags: { exclude: ["system"] },
+  operations: { startLogin: "mutation" as const },
 };
 before(async () => {
   await mkdir(resolve(".test-output"), { recursive: true });
@@ -95,7 +95,7 @@ test("scaffolds shared options, lazy page, controllers and explicit registration
   assert.equal(result.files.length, 4);
   assert.deepEqual(diagnostics(result.files), []);
   const queries = await readFile(join(result.feature, "pages/detail.queries.ts"), "utf8");
-  assert.match(queries, /items\.getItemQuery\(params\.id\)/);
+  assert.match(queries, /items\.getItemQuery\(\{ itemId: params\.id \}\)/);
   assert.match(queries, /items\.listItemsQuery\(\)/);
   assert.match(queries, /staleTime: 30_000/);
   const route = await readFile(join(result.feature, "detail.route.ts"), "utf8");
@@ -155,6 +155,14 @@ test("fails before writing on missing bindings, writes and unsupported paths", a
   await assert.rejects(
     scaffoldPage(config, { ...options("unused"), bindings: ["item.itemId=id", "item.extra=id"] }),
     /Unused binding/,
+  );
+  await assert.rejects(
+    scaffoldPage(config, {
+      ...options("number"),
+      queries: ["items=list_items"],
+      bindings: ["items.limit=id"],
+    }),
+    /Binding items.limit needs a string API input/,
   );
   await assert.rejects(
     scaffoldPage(config, { ...options("write"), queries: ["item=create_item"] }),
@@ -228,6 +236,6 @@ test("CLI resolves paths against the config and requires explicit query bindings
   assert.match(stdout, /4 editable files/);
   assert.match(
     await readFile(join(root, "src/features/cli/pages/detail.queries.ts"), "utf8"),
-    /getItemQuery\(params.id\)/,
+    /getItemQuery\(\{ itemId: params.id \}\)/,
   );
 });
