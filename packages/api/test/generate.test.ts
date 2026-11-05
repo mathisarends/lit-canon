@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -274,6 +274,7 @@ export default defineConfig({
     [["--check"], /Unknown option '--check'/],
     [["regenerate"], /Unknown command "regenerate"\./],
     [["generate", "extra"], /Unexpected argument "extra"\./],
+    [["check", "--watch"], /--watch only works with generate\./],
     [["check", "--config", "missing.config.ts"], /Config file not found: .*missing\.config\.ts/],
   ] as const) {
     await assert.rejects(run(process.execPath, [cli, ...args], { cwd: directory }), (error) => {
@@ -299,6 +300,48 @@ export default defineConfig({
       return true;
     },
   );
+});
+
+test("CLI watch mode regenerates after input and config changes and survives errors", async () => {
+  const directory = join(root, "cli-watch");
+  await mkdir(directory);
+  const input = join(directory, "openapi.json");
+  await writeFile(input, JSON.stringify(openapi()));
+  const config = (exclude: string[]) =>
+    `export default { input: "openapi.json", output: "generated", excludeTags: ${JSON.stringify(exclude)} };`;
+  await writeFile(join(directory, "lit-canon-api.config.ts"), config(["system"]));
+
+  const child = spawn(process.execPath, [cli, "generate", "--watch"], { cwd: directory });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => (stdout += chunk));
+  child.stderr.on("data", (chunk) => (stderr += chunk));
+  const waitFor = async (read: () => string, pattern: RegExp, count: number) => {
+    const deadline = Date.now() + 30_000;
+    while ((read().match(new RegExp(pattern, "g")) ?? []).length < count) {
+      assert.ok(Date.now() < deadline, `Timed out waiting for ${pattern}:\n${stdout}${stderr}`);
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  };
+  try {
+    await waitFor(() => stdout, /Watching for changes/, 1);
+    assert.match(stdout, /Generated client: .*\(4 resources\)/);
+
+    // A broken input reports the error and keeps watching.
+    await writeFile(input, "{");
+    await waitFor(() => stderr, /Could not parse the OpenAPI input/, 1);
+    await waitFor(() => stdout, /Watching for changes/, 2);
+
+    await writeFile(input, JSON.stringify(openapi()));
+    await waitFor(() => stdout, /Generated client/, 2);
+    await waitFor(() => stdout, /Watching for changes/, 3);
+
+    // A changed config is loaded again instead of being served from the module cache.
+    await writeFile(join(directory, "lit-canon-api.config.ts"), config([]));
+    await waitFor(() => stdout, /\(5 resources\)/, 1);
+  } finally {
+    child.kill();
+  }
 });
 
 test("imports a custom request module relative to each resource and keeps it outside the output", async () => {

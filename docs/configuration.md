@@ -45,6 +45,7 @@ commands are:
 lit-canon-api generate                          # write the client
 lit-canon-api check                             # compare without writing
 lit-canon-api generate --config api.config.ts   # use another config file
+lit-canon-api generate --watch                  # regenerate on changes
 lit-canon-api --help
 ```
 
@@ -61,6 +62,10 @@ and creates editable files outside API output. See
 Without a command, or with an unknown one, the CLI prints its usage and exits with
 code 1. `-c` is short for `--config`; the default is `lit-canon-api.config.ts` in
 the current directory.
+
+`generate --watch` (`-w`) generates once and again whenever the config file or a
+local input file changes. Errors are printed and the CLI keeps watching; stop it
+with Ctrl+C. A URL input is not watched.
 
 The output directory is replaced only after generation and transformation succeed.
 Use a dedicated generated directory: files without a generator header and symbolic
