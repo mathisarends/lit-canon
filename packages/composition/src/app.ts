@@ -54,13 +54,40 @@ export interface App {
 
 /** How the navigation that is about to enter a route was started. */
 interface Intent {
+  /** Scroll to the top, or to the `#hash` target when there is one. */
   scroll: boolean;
+  /** Scroll to the `#hash` target when there is one, but never to the top. */
+  anchor: boolean;
   redirects: number;
 }
 
 const MAX_REDIRECTS = 10;
-const DEFAULT_INTENT: Intent = { scroll: true, redirects: 0 };
-const NO_SCROLL: Intent = { scroll: false, redirects: 0 };
+const DEFAULT_INTENT: Intent = { scroll: true, anchor: true, redirects: 0 };
+/** Back/forward: the browser restores the scroll position. */
+const NO_SCROLL: Intent = { scroll: false, anchor: false, redirects: 0 };
+/** The first route: the browser looked for the `#hash` target before it existed. */
+const INITIAL: Intent = { scroll: false, anchor: true, redirects: 0 };
+
+/** The element a `#hash` points to, also inside open shadow roots of rendered pages. */
+function findAnchor(root: ParentNode, hash: string): Element | null {
+  let id: string;
+  try {
+    id = decodeURIComponent(hash.slice(1));
+  } catch {
+    return null;
+  }
+  const selector = `[id="${CSS.escape(id)}"], a[name="${CSS.escape(id)}"]`;
+  const search = (node: ParentNode): Element | null => {
+    const found = node.querySelector(selector);
+    if (found) return found;
+    for (const element of node.querySelectorAll("*")) {
+      const inner = element.shadowRoot && search(element.shadowRoot);
+      if (inner) return inner;
+    }
+    return null;
+  };
+  return search(root);
+}
 
 export function createApp(options: AppOptions): App {
   const { features, baseTitle, rootTagName = "lit-canon-root" } = options;
@@ -130,6 +157,7 @@ export function createApp(options: AppOptions): App {
   let navId = 0;
   let committedUrl: string | undefined;
   let scrollPending = false;
+  let anchorPending = false;
   let redirectTask: Promise<void> | undefined;
 
   const currentUrl = () => location.pathname + location.search + location.hash;
@@ -202,7 +230,7 @@ export function createApp(options: AppOptions): App {
               queueMicrotask(() => {
                 if (stale() || !root) return resolve();
                 history.replaceState(null, "", to);
-                intent = { scroll: nav.scroll, redirects: nav.redirects + 1 };
+                intent = { ...nav, redirects: nav.redirects + 1 };
                 resolve(root.router.goto(pathnameOf(to)));
               }),
             );
@@ -232,6 +260,7 @@ export function createApp(options: AppOptions): App {
       setTitle(typeof title === "function" ? title({ params }) : title);
       committedUrl = currentUrl();
       scrollPending = nav.scroll;
+      anchorPending = nav.anchor && location.hash.length > 1;
       return true;
     };
 
@@ -271,7 +300,7 @@ export function createApp(options: AppOptions): App {
     override connectedCallback() {
       // Registered before the router's own listener, so it runs first.
       window.addEventListener("popstate", onPopState);
-      intent = NO_SCROLL; // initial navigation
+      intent = INITIAL;
       super.connectedCallback();
     }
 
@@ -285,10 +314,21 @@ export function createApp(options: AppOptions): App {
     }
 
     protected override updated() {
-      if (scrollPending) {
-        scrollPending = false;
-        window.scrollTo(0, 0);
+      const top = scrollPending;
+      const hash = anchorPending ? location.hash : "";
+      scrollPending = anchorPending = false;
+      if (!hash) {
+        if (top) window.scrollTo(0, 0);
+        return;
       }
+      const id = navId;
+      // Wait a frame, so the page has rendered its own (shadow DOM) content.
+      requestAnimationFrame(() => {
+        if (id !== navId) return;
+        const target = findAnchor(this, hash);
+        if (target) target.scrollIntoView();
+        else if (top) window.scrollTo(0, 0);
+      });
     }
   }
   customElements.define(rootTagName, RootElement);

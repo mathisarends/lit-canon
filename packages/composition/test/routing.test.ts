@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { html } from "lit";
+import { LitElement, html } from "lit";
 import { defineFeature, definePage, type Layout } from "../src/index.js";
 import { back, delay, flush, start, text } from "./helpers.js";
 
@@ -243,6 +243,46 @@ describe("scroll", () => {
     expect(window.scrollY).toBe(800);
     await app.navigate("/b");
     expect(window.scrollY).toBe(0);
+  });
+
+  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+  // The target sits inside the page's shadow root, below a tall spacer.
+  customElements.define(
+    "anchor-page",
+    class extends LitElement {
+      override render() {
+        return html`<div style="height: 3000px"></div>
+          <h2 id="details section">details</h2>
+          <div style="height: 3000px"></div>`;
+      }
+    },
+  );
+  const anchored = defineFeature({
+    name: "anchored",
+    pages: [
+      ...tall.pages,
+      definePage({ path: "/anchor", render: () => html`<anchor-page></anchor-page>` }),
+    ],
+  });
+
+  it("scrolls to the #hash target, also inside a page's shadow root", async () => {
+    const { app } = await start({ features: [anchored] });
+    await app.navigate("/anchor#details%20section");
+    await frame();
+    expect(window.scrollY).toBeGreaterThan(2500);
+
+    // A missing target falls back to the top.
+    await app.navigate("/a");
+    window.scrollTo(0, 800);
+    await app.navigate("/b#missing");
+    await frame();
+    expect(window.scrollY).toBe(0);
+  });
+
+  it("scrolls to the #hash target on the initial load", async () => {
+    await start({ features: [anchored] }, "/anchor#details%20section");
+    await frame();
+    expect(window.scrollY).toBeGreaterThan(2500);
   });
 
   it("does not scroll after popstate", async () => {

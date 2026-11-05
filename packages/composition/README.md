@@ -192,7 +192,7 @@ interface App {
 - **Entering a route:** guards → start `prefetch` and `load()` together → wait for `load()` → title → render. Data never blocks navigation. If `load` rejects, the error is logged with the page path and the navigation is cancelled. When several navigations overlap (say a slow async guard and a second click), the latest one wins.
 - **Navigation errors:** a throwing guard, a rejected `load` and a redirect loop are logged with `console.error`. With `onNavigationError`, they are passed to it instead, for example to show a message to the user. The current page stays either way.
 - **Titles:** set after `load`. With `baseTitle`: `"{title} · {baseTitle}"`. Without `title`: just `baseTitle`. Without both, `document.title` is left alone.
-- **Scrolling:** after a new route renders, the window scrolls to the top. Back/forward (`popstate`) and the initial load do not scroll.
+- **Scrolling:** after a new route renders, the window scrolls to the top. With a `#hash` in the URL, it scrolls to the element with that `id` instead, also inside the open shadow root of a page, one frame after rendering; without such an element it scrolls to the top. The initial load only scrolls to a `#hash` target. Back/forward (`popstate`) does not scroll.
 - **Links:** `<a href>` clicks are handled by `@lit-labs/router`. lit-canon-composition adds no click handler.
 - `start()` appends the root element and routes the current URL. The root element renders into light DOM, so global styles reach layouts and pages.
 - `navigate(path)` does `history.pushState` and routes. It resolves once the navigation, including any redirects, has rendered. `path` may include a query string and hash.
