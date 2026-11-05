@@ -148,3 +148,22 @@ test("returns binary responses as Blob and text formats as strings", async () =>
     assert.equal(await respond(response)("/text"), "a,b", String(type));
   }
 });
+
+test("lets fetch set the multipart content type for FormData bodies", async () => {
+  const sent: Headers[] = [];
+  const request = createApiFetch({
+    headers: { "content-type": "application/json" },
+    fetch: async (_url, init) => {
+      sent.push(new Headers(init?.headers));
+      return new Response(null, { status: 204 });
+    },
+  });
+  const body = new FormData();
+  body.append("name", "value");
+  await request("/upload", { method: "POST", body });
+  await request("/upload", { method: "POST", body, headers: { "content-type": "text/plain" } });
+  await request("/json", { method: "POST", body: { a: 1 } });
+  assert.equal(sent[0].get("content-type"), null);
+  assert.equal(sent[1].get("content-type"), null);
+  assert.equal(sent[2].get("content-type"), "application/json");
+});

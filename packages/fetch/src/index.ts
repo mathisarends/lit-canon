@@ -125,6 +125,11 @@ async function resolveHeaders(
 
 /** Serializes plain objects and arrays as JSON; FormData, Blob and strings pass through. */
 function encodeBody(body: unknown, headers: Headers): BodyInit | null | undefined {
+  if (typeof FormData !== "undefined" && body instanceof FormData) {
+    // fetch sets multipart/form-data with the boundary; a configured type would hide it.
+    headers.delete("content-type");
+    return body;
+  }
   if (body === undefined || !isJsonBody(body)) {
     return body as BodyInit | null | undefined;
   }

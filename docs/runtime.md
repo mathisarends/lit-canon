@@ -55,7 +55,9 @@ headers, and per-request credentials override the configured credentials.
   `{ tag: ["a", null], page: undefined }` becomes `?tag=a`.
 - **Bodies**: plain objects, arrays and `null` are sent as JSON with
   `content-type: application/json`, unless a content type is set. `FormData`, `Blob`
-  and other native bodies are passed through.
+  and other native bodies are passed through. For `FormData`, any configured or
+  per-request content type is removed so `fetch` can set `multipart/form-data` with
+  its boundary.
 - **Responses**: `application/json` and `+json` bodies are parsed. Text formats
   (`text/*`, XML, form data and bodies without a content type) return a string. Other
   media types, such as `application/pdf`, `application/octet-stream` or images,
