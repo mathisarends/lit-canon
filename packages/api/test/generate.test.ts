@@ -611,10 +611,18 @@ test("rejects generated name collisions and unsupported parameter serialization 
   await assert.rejects(generate({ input, output }), /conflicts with a generated import/);
   spec.paths["/items/{itemId}"]!.get!.operationId = "get_item";
   spec.paths["/items"]!.get!.parameters = [
-    { name: "token", in: "header", schema: { type: "string" } },
+    { name: "session", in: "cookie", schema: { type: "string" } },
   ];
   await writeFile(input, JSON.stringify(spec));
-  await assert.rejects(generate({ input, output }), /Unsupported header parameter/);
+  await assert.rejects(generate({ input, output }), /Unsupported cookie parameter/);
+  spec.paths["/items"]!.get!.parameters = [
+    { name: "Authorization", in: "header", schema: { type: "string" } },
+  ];
+  await writeFile(input, JSON.stringify(spec));
+  await assert.rejects(
+    generate({ input, output }),
+    /Header parameter Authorization in GET \/items is ignored by OpenAPI/,
+  );
   spec.paths["/items"]!.get!.parameters = [
     { name: "filters", in: "query", style: "deepObject", schema: { type: "object" } },
   ];
@@ -718,4 +726,54 @@ test("collects operations without a tag in the defaultTag resource", async () =>
     excludeTags: ["general", "system"],
   });
   assert.deepEqual(excluded.tags, ["auth", "files", "items"]);
+});
+
+test("generates typed header parameters that call-site headers can override", async () => {
+  const directory = join(root, "header-parameters");
+  await mkdir(directory);
+  const spec = openapi();
+  spec.paths["/items/{itemId}"]!.get!.parameters = [
+    { name: "X-Tenant-Id", in: "header", required: true, schema: { type: "string" } },
+    { name: "If-None-Match", in: "header", schema: { type: "string" } },
+  ];
+  const input = join(directory, "openapi.json");
+  const output = join(directory, "generated");
+  await writeFile(input, JSON.stringify(spec));
+  const result = await generate({ input, output });
+  assert.deepEqual(typecheck(output, result.files), []);
+  const items = join(output, "items");
+  const api = await readFile(join(items, "api.ts"), "utf8");
+  assert.match(api, /headers: GetItemHeaders/);
+  assert.match(await readFile(join(items, "models.ts"), "utf8"), /"X-Tenant-Id": string;/);
+  await compile(items, ["api", "queries"]);
+  const sent: Headers[] = [];
+  configureApiFetch({
+    headers: { "x-tenant-id": "from-config" },
+    fetch: async (_url, init) => {
+      sent.push(new Headers(init?.headers));
+      return new Response('{"id":"1"}', { headers: { "content-type": "application/json" } });
+    },
+  });
+  const { getItem } = await import(pathToFileURL(join(items, "api.js")).href);
+  const { getItemQuery } = await import(pathToFileURL(join(items, "queries.js")).href);
+  await getItem("1", { "X-Tenant-Id": "t1", "If-None-Match": undefined });
+  await getItem(
+    "1",
+    { "X-Tenant-Id": "t1", "If-None-Match": '"v1"' },
+    { headers: { "x-tenant-id": "call" } },
+  );
+  await getItemQuery("1", { "X-Tenant-Id": "t2" }).queryFn({
+    signal: new AbortController().signal,
+  });
+  assert.equal(sent[0].get("x-tenant-id"), "t1");
+  assert.equal(sent[0].has("if-none-match"), false);
+  assert.equal(sent[1].get("x-tenant-id"), "call");
+  assert.equal(sent[1].get("if-none-match"), '"v1"');
+  assert.equal(sent[2].get("x-tenant-id"), "t2");
+  assert.deepEqual(getItemQuery("1", { "X-Tenant-Id": "t2" }).queryKey, [
+    "items",
+    "getItem",
+    "1",
+    { "X-Tenant-Id": "t2" },
+  ]);
 });

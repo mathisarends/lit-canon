@@ -140,6 +140,8 @@ export async function generate(
             mode: "split",
             target: join(resourceDir, "api.ts"),
             schemas: false,
+            // Header parameters become a typed `headers` argument.
+            headers: true,
             client: "fetch",
             override: {
               mutator: { path: mutatorPath, name: "apiFetch" },

@@ -4,6 +4,8 @@ export interface Operation {
   path: string;
   method: string;
   hasQuery: boolean;
+  /** Header parameters, generated as a typed `headers` argument. */
+  hasHeaders: boolean;
   problems: ProblemType[];
 }
 

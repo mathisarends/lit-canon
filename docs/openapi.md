@@ -21,12 +21,19 @@ a unique, explicit `operationId` in `snake_case` or `camelCase`. Local parameter
 references are supported. Bundle path-item references before generation.
 
 The transformation targets JSON and multipart fetch requests, scalar path parameters
-with `simple` serialization and query parameters with `form`/`explode: true`
-serialization. Path identifiers such as `item_id`, `scope.id` and `class` use
-Orval's TypeScript naming rules. Header and cookie parameters, object parameters
-and other serialization styles are rejected rather than silently producing a
-different request. Send headers such as authentication through
-[`configureApiFetch`](runtime.md#dynamic-headers) instead.
+with `simple` serialization, query parameters with `form`/`explode: true`
+serialization and header parameters with `simple` serialization. Path identifiers
+such as `item_id`, `scope.id` and `class` use Orval's TypeScript naming rules.
+Cookie parameters, object parameters and other serialization styles are rejected
+rather than silently producing a different request.
+
+Header parameters, such as `X-Tenant-Id` or `If-Match`, become a typed `headers`
+argument after the request body, for example
+`updateItem(itemId, request, { "If-Match": etag })`. Headers passed in the
+call-site options win over it, and it wins over `configureApiFetch` headers. The
+argument is part of the query key. `Accept`, `Content-Type` and `Authorization`
+header parameters are ignored by OpenAPI and fail; send authentication through
+[`configureApiFetch`](runtime.md#dynamic-headers).
 
 Generated export names must not collide. A query operation named `all` conflicts
 with `<resource>Keys.all`, and a model or operation named like a generated factory,

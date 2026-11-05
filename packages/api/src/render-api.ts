@@ -150,6 +150,19 @@ function renderOperation(
   if (body) {
     fetchOptions.push(`body: ${useRequestName ? "request" : body}`);
   }
+  if (operation.hasHeaders) {
+    if (!parameterNames.has("headers") || parameterNames.has("requestHeaders")) {
+      throw new Error(`Missing or conflicting header params in ${name}`);
+    }
+    // Header parameters fill in what the call site's options.headers leave unset.
+    setup.push(`const requestHeaders = new Headers(options?.headers);
+      for (const [key, value] of Object.entries(headers ?? {})) {
+        if (value !== undefined && value !== null && !requestHeaders.has(key)) {
+          requestHeaders.set(key, String(value));
+        }
+      }`);
+    fetchOptions.push("headers: requestHeaders");
+  }
 
   const responseType = call.typeArguments?.[0]?.getText(sourceFile);
   if (!responseType || !arrow.type) {

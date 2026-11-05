@@ -40,8 +40,17 @@ function validateParameter(
   spec: OpenAPIV3.Document,
   context: string,
 ): void {
-  if (parameter.in !== "path" && parameter.in !== "query") {
+  if (parameter.in !== "path" && parameter.in !== "query" && parameter.in !== "header") {
     throw new Error(`Unsupported ${parameter.in} parameter ${parameter.name} in ${context}`);
+  }
+  if (
+    parameter.in === "header" &&
+    ["accept", "content-type", "authorization"].includes(String(parameter.name).toLowerCase())
+  ) {
+    // OpenAPI ignores these header parameters; generating them would demand a value per call.
+    throw new Error(
+      `Header parameter ${parameter.name} in ${context} is ignored by OpenAPI. Remove it and set the header with configureApiFetch.`,
+    );
   }
   const style = parameter.in === "query" ? "form" : "simple";
   const explode = parameter.in === "query";
@@ -58,7 +67,8 @@ function validateParameter(
       parameter.schema,
       spec,
       `${context} (${parameter.name})`,
-      parameter.in === "query",
+      // Query arrays repeat the key; header arrays are comma-separated (simple style).
+      parameter.in !== "path",
     );
   }
 }
@@ -178,6 +188,7 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
         path,
         method,
         hasQuery: [...parameters.values()].some((parameter) => parameter.in === "query"),
+        hasHeaders: [...parameters.values()].some((parameter) => parameter.in === "header"),
         problems: config.problems === false ? [] : operationProblems(operation, spec),
       });
       operationsByTag.set(tag, operations);
