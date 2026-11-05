@@ -82,6 +82,9 @@ test("generates and executes clients, key factories, queries and mutations; dete
   assert.match(api, /query: params/);
   assert.match(api, /body: request/);
   assert.doesNotMatch(api, /getListItemsUrl|JSON.stringify|getHeaders|orval/);
+  // Only the root index names the spec version.
+  assert.doesNotMatch(api, /spec version/);
+  assert.match(await readFile(join(output, "index.ts"), "utf8"), / \* OpenAPI spec version: /);
   assert.match(
     await readFile(join(output, "items/index.ts"), "utf8"),
     /export \{ ApiError \} from "lit-canon-fetch";/,
