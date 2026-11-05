@@ -182,7 +182,7 @@ export async function scaffoldPage(config: CodegenConfig, options: PageScaffoldO
     const tag = resource[0];
     const namespace = camel(tag);
     const source = await readFile(resolve(generated, tag, "api.ts"), "utf8");
-    const inputs = operationInputs(source).get(name);
+    const inputs = operationInputs(source).inputs.get(name);
     if (!inputs) throw new Error(`Generate the API client before scaffolding: ${name}`);
     const args: string[] = [];
     for (const input of inputs) {

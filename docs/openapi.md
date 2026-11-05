@@ -36,8 +36,8 @@ header parameters are ignored by OpenAPI and fail; send authentication through
 [`configureApiFetch`](runtime.md#dynamic-headers).
 
 Generated export names must not collide. A query operation named `all` conflicts
-with `<resource>Keys.all`, and a model or operation named like a generated factory,
-such as `itemsKeys`, conflicts with it. Both fail before the existing client is
+with `<resource>Keys.all`, and a model or operation named like a generated factory
+or type, such as `itemsKeys` or `UpdateItemVariables`, conflicts with it. Both fail before the existing client is
 replaced.
 
 Generated TypeScript types describe the API contract; the runtime does not validate

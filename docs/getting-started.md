@@ -124,16 +124,12 @@ export const listProducts = (
 ```ts
 export const productsKeys = {
   all: ["products"] as const,
-  listProducts: (params?: Parameters<typeof listProducts>[0]) =>
+  listProducts: (params?: ListProductsParams) =>
     ["products", "listProducts", params ?? null] as const,
-  getProduct: (productId: Parameters<typeof getProduct>[0]) =>
-    ["products", "getProduct", productId] as const,
+  getProduct: (productId: string) => ["products", "getProduct", productId] as const,
 };
 
-export const listProductsQuery = (
-  params?: Parameters<typeof listProducts>[0],
-  options?: ApiRequestOptions,
-) =>
+export const listProductsQuery = (params?: ListProductsParams, options?: ApiRequestOptions) =>
   queryOptions({
     queryKey: productsKeys.listProducts(params),
     queryFn: ({ signal }) => listProducts(params, { ...options, signal }),
@@ -148,19 +144,22 @@ any `signal` in it.
 options that take one object.
 
 ```ts
+/** The variables passed to `mutate` for updateProduct. */
+export type UpdateProductVariables = { productId: string; request: ProductInput };
+
 export const updateProductMutation = (options?: ApiRequestOptions) =>
   mutationOptions({
     mutationKey: ["products", "updateProduct"] as const,
-    mutationFn: (variables: {
-      productId: Parameters<typeof updateProduct>[0];
-      request: Parameters<typeof updateProduct>[1];
-    }) => updateProduct(variables.productId, variables.request, options),
+    mutationFn: (variables: UpdateProductVariables) =>
+      updateProduct(variables.productId, variables.request, options),
   });
 ```
 
 The properties are named after the parameters of the API function: path parameters
-by name, `params` for query parameters and `request` for the body. Call it with
-`mutate({ productId: "p-1", request: { name, price } })`.
+by name, `params` for query parameters, `request` for the body and `headers` for
+header parameters. Call it with `mutate({ productId: "p-1", request: { name, price } })`.
+The exported `UpdateProductVariables` type names that object, for example in a helper
+that builds it.
 
 ## Use it in a Lit component
 

@@ -99,8 +99,7 @@ configureApiFetch({
 export const all = items.itemsKeys.all;
 export const query = items.getItemQuery("1");
 export const remove = items.deleteItemMutation();
-type Variables = Parameters<NonNullable<typeof remove.mutationFn>>[0];
-export const variables: Variables = { itemId: "1" };
+export const variables: items.DeleteItemVariables = { itemId: "1" };
 const detailQueries = ({ id }: { id: string }) => ({ item: { ...items.getItemQuery(id), staleTime: 30_000 } });
 const detail = definePage({
   path: "/items/:id",

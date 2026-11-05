@@ -8,28 +8,22 @@ import { queryOptions } from "@tanstack/lit-query";
 import type { ApiRequestOptions } from "lit-canon-fetch";
 
 import { listProducts, getProduct } from "./api";
+import type { ListProductsParams } from "./models";
 
 export const productsKeys = {
   all: ["products"] as const,
-  listProducts: (params?: Parameters<typeof listProducts>[0]) =>
+  listProducts: (params?: ListProductsParams) =>
     ["products", "listProducts", params ?? null] as const,
-  getProduct: (productId: Parameters<typeof getProduct>[0]) =>
-    ["products", "getProduct", productId] as const,
+  getProduct: (productId: string) => ["products", "getProduct", productId] as const,
 };
 
-export const listProductsQuery = (
-  params?: Parameters<typeof listProducts>[0],
-  options?: ApiRequestOptions,
-) =>
+export const listProductsQuery = (params?: ListProductsParams, options?: ApiRequestOptions) =>
   queryOptions({
     queryKey: productsKeys.listProducts(params),
     queryFn: ({ signal }) => listProducts(params, { ...options, signal }),
   });
 
-export const getProductQuery = (
-  productId: Parameters<typeof getProduct>[0],
-  options?: ApiRequestOptions,
-) =>
+export const getProductQuery = (productId: string, options?: ApiRequestOptions) =>
   queryOptions({
     queryKey: productsKeys.getProduct(productId),
     queryFn: ({ signal }) => getProduct(productId, { ...options, signal }),

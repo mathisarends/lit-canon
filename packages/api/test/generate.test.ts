@@ -96,9 +96,14 @@ test("generates and executes clients, key factories, queries and mutations; dete
   assert.doesNotMatch(queries, /queryKey: \[/);
 
   const mutations = await readFile(join(output, "items/mutations.ts"), "utf8");
-  assert.match(mutations, /variables: \{ request: Parameters<typeof createItem>\[0\] \}/);
-  assert.match(mutations, /itemId: Parameters<typeof deleteItem>\[0\];/);
-  assert.match(mutations, /params\?: Parameters<typeof deleteItem>\[1\];/);
+  assert.match(mutations, /import type \{ DeleteItemParams, Item \} from "\.\/models";/);
+  assert.match(mutations, /export type CreateItemVariables = \{ request: Item \};/);
+  assert.match(
+    mutations,
+    /export type DeleteItemVariables = \{ itemId: string; params\?: DeleteItemParams \};/,
+  );
+  assert.match(mutations, /mutationFn: \(variables: DeleteItemVariables\) =>/);
+  assert.doesNotMatch(`${queries}${mutations}`, /Parameters</);
   assert.match(mutations, /deleteItem\(variables\.itemId, variables\.params, options\)/);
   const login = await readFile(join(output, "auth/mutations.ts"), "utf8");
   assert.match(login, /mutationFn: \(\) => startLogin\(options\)/);

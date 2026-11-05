@@ -16,9 +16,73 @@ interface RenderQueryOptions {
   requestImport: string;
 }
 
-export function operationInputs(source: string): Map<string, OperationInput[]> {
+/** Global types that a copied parameter type may use without an import. */
+const globalTypes = new Set(["Array", "ReadonlyArray", "Record", "Blob", "File", "Date"]);
+
+interface ParsedInputs {
+  inputs: Map<string, OperationInput[]>;
+  /** Model types used by the copied parameter types, per operation. */
+  models: Map<string, Set<string>>;
+}
+
+/**
+ * The parameter type as written in api.ts when it only uses models and global types,
+ * e.g. `ListProductsParams`; otherwise null, and the caller derives it from the function.
+ */
+function parameterType(
+  parameter: ts.ParameterDeclaration,
+  sourceFile: ts.SourceFile,
+  modelImports: Set<string>,
+  used: Set<string>,
+): string | null {
+  if (!parameter.type) {
+    return null;
+  }
+  const references = new Set<string>();
+  let portable = true;
+  const visit = (node: ts.Node): void => {
+    if (ts.isTypeQueryNode(node) || ts.isImportTypeNode(node)) {
+      portable = false;
+    } else if (ts.isTypeReferenceNode(node)) {
+      if (!ts.isIdentifier(node.typeName)) {
+        portable = false;
+      } else if (modelImports.has(node.typeName.text)) {
+        references.add(node.typeName.text);
+      } else if (!globalTypes.has(node.typeName.text)) {
+        portable = false;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parameter.type);
+  if (!portable) {
+    return null;
+  }
+  references.forEach((name) => used.add(name));
+  return parameter.type.getText(sourceFile);
+}
+
+export function operationInputs(source: string): ParsedInputs {
   const sourceFile = ts.createSourceFile("api.ts", source, ts.ScriptTarget.Latest, true);
   const inputs = new Map<string, OperationInput[]>();
+  const models = new Map<string, Set<string>>();
+  const modelImports = new Set<string>();
+
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text === "./models" &&
+      statement.importClause?.namedBindings &&
+      ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      for (const element of statement.importClause.namedBindings.elements) {
+        if (!element.propertyName) {
+          modelImports.add(element.name.text);
+        }
+      }
+    }
+  }
 
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) {
@@ -41,18 +105,31 @@ export function operationInputs(source: string): Map<string, OperationInput[]> {
       throw new Error(`Missing request options in generated API operation: ${name}`);
     }
 
+    const used = new Set<string>();
     inputs.set(
       name,
       parameters.slice(0, -1).map((parameter, index) => ({
         name: parameter.name.getText(sourceFile),
         optional: Boolean(parameter.questionToken),
-        type: `Parameters<typeof ${name}>[${index}]`,
+        type:
+          parameterType(parameter, sourceFile, modelImports, used) ??
+          `Parameters<typeof ${name}>[${index}]`,
         sourceType: parameter.type?.getText(sourceFile) ?? "unknown",
       })),
     );
+    models.set(name, used);
   }
 
-  return inputs;
+  return { inputs, models };
+}
+
+function modelImport(names: string[], models: Map<string, Set<string>>): string[] {
+  const used = [...new Set(names.flatMap((name) => [...models.get(name)!]))].sort();
+  return used.length ? [`import type { ${used.join(", ")} } from "./models";`] : [];
+}
+
+function variablesType(name: string): string {
+  return `${name[0].toUpperCase()}${name.slice(1)}Variables`;
 }
 
 function functionParameters(inputs: OperationInput[]): string {
@@ -121,10 +198,13 @@ function renderMutation(tag: string, name: string, inputs: OperationInput[]): st
     ({ name: inputName, optional, type }) => `${inputName}${optional ? "?" : ""}: ${type};`,
   );
   const call = [...inputs.map(({ name: inputName }) => `variables.${inputName}`), "options"];
-  return `export const ${name}Mutation = (options?: ApiRequestOptions) =>
+  return `/** The variables passed to \`mutate\` for ${name}. */
+  export type ${variablesType(name)} = { ${properties.join(" ")} };
+
+  export const ${name}Mutation = (options?: ApiRequestOptions) =>
     mutationOptions({
       ${key}
-      mutationFn: (variables: { ${properties.join(" ")} }) => ${name}(${call.join(", ")}),
+      mutationFn: (variables: ${variablesType(name)}) => ${name}(${call.join(", ")}),
     });`;
 }
 
@@ -137,7 +217,7 @@ export function renderQueryFiles(
 ): { queries: string | null; mutations: string | null } {
   const mutationOperations = new Set(config.mutationOperations ?? []);
   const keysName = `${config.namespace}Keys`;
-  const inputs = operationInputs(apiSource);
+  const { inputs, models } = operationInputs(apiSource);
   const queryNames: string[] = [];
   const mutationNames: string[] = [];
 
@@ -163,6 +243,7 @@ export function renderQueryFiles(
     ...(queryNames.length ? [keysName] : []),
     ...queryNames.map((name) => `${name}Query`),
     ...mutationNames.map((name) => `${name}Mutation`),
+    ...mutationNames.filter((name) => inputs.get(name)!.length).map(variablesType),
   ]) {
     if (bindings.has(name)) {
       throw new Error(`Duplicate generated resource export: ${name}`);
@@ -177,7 +258,10 @@ export function renderQueryFiles(
           'import { queryOptions } from "@tanstack/lit-query";',
           `import type { ApiRequestOptions } from ${JSON.stringify(config.requestImport)};`,
         ].join("\n"),
-        `import { ${queryNames.join(", ")} } from "./api";`,
+        [
+          `import { ${queryNames.join(", ")} } from "./api";`,
+          ...modelImport(queryNames, models),
+        ].join("\n"),
         renderKeys(keysName, tag, queryNames, inputs),
         ...queryNames.map((name) => renderQuery(keysName, name, inputs.get(name)!)),
         "",
@@ -191,7 +275,10 @@ export function renderQueryFiles(
           'import { mutationOptions } from "@tanstack/lit-query";',
           `import type { ApiRequestOptions } from ${JSON.stringify(config.requestImport)};`,
         ].join("\n"),
-        `import { ${mutationNames.join(", ")} } from "./api";`,
+        [
+          `import { ${mutationNames.join(", ")} } from "./api";`,
+          ...modelImport(mutationNames, models),
+        ].join("\n"),
         ...mutationNames.map((name) => renderMutation(tag, name, inputs.get(name)!)),
         "",
       ].join("\n\n")
