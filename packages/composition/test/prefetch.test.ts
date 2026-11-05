@@ -172,6 +172,9 @@ describe("intent prefetch", () => {
         }),
       ],
     });
+    // The test browser's pointer rests at (0, 0). A link there gets a real hover after
+    // layout, which starts the timer again and makes this test depend on timing.
+    host.style.cssText = "position: fixed; top: 200px; left: 200px";
     const anchor = host.querySelector("a")!;
     anchor.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" }));
     anchor.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
