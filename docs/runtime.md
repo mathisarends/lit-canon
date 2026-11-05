@@ -95,6 +95,15 @@ string `type` and `title` fields and a numeric `status`. It keeps the HTTP statu
 even when the error body is malformed. Network failures and aborts propagate from
 `fetch`.
 
+Every `ApiError` from the runtime also carries the request and response details:
+
+| Property  | Content                                                                |
+| --------- | ---------------------------------------------------------------------- |
+| `url`     | The requested URL, including base URL and query string.                |
+| `method`  | The upper-case HTTP method.                                            |
+| `headers` | The response headers, for example `Retry-After` or `WWW-Authenticate`. |
+| `body`    | The raw response body text, also when it is not a problem object.      |
+
 Each generated resource re-exports `ApiError`, `ApiProblem` and `ApiRequestOptions`.
 For typed problem details per resource, see
 [configuration](configuration.md#project-specific-options).
@@ -125,14 +134,15 @@ set them to `[]` if your module exposes different symbols. With a custom module,
 
 ## Exports
 
-| Export              | Kind     | Purpose                                                  |
-| ------------------- | -------- | -------------------------------------------------------- |
-| `apiFetch`          | function | The request function generated code calls.               |
-| `configureApiFetch` | function | Sets the defaults used by `apiFetch`.                    |
-| `createApiFetch`    | function | Creates an independent `apiFetch` with its own defaults. |
-| `ApiError`          | class    | Thrown for non-2xx responses; `status` and `problem`.    |
-| `ApiProblem`        | type     | RFC 9457 problem details.                                |
-| `ApiRequestOptions` | type     | `RequestInit` plus `body` and `query`.                   |
-| `ApiFetchConfig`    | type     | The options of `configureApiFetch` and `createApiFetch`. |
+| Export              | Kind     | Purpose                                                     |
+| ------------------- | -------- | ----------------------------------------------------------- |
+| `apiFetch`          | function | The request function generated code calls.                  |
+| `configureApiFetch` | function | Sets the defaults used by `apiFetch`.                       |
+| `createApiFetch`    | function | Creates an independent `apiFetch` with its own defaults.    |
+| `ApiError`          | class    | Thrown for non-2xx responses; `status`, `problem`, details. |
+| `ApiErrorDetails`   | type     | The optional third `ApiError` constructor argument.         |
+| `ApiProblem`        | type     | RFC 9457 problem details.                                   |
+| `ApiRequestOptions` | type     | `RequestInit` plus `body` and `query`.                      |
+| `ApiFetchConfig`    | type     | The options of `configureApiFetch` and `createApiFetch`.    |
 
 [All documentation](README.md)

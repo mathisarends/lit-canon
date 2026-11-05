@@ -200,3 +200,29 @@ test("serializes Date query values as ISO 8601", async () => {
   await request("/events", { query: { since: new Date(Date.UTC(2026, 0, 2, 3, 4, 5)) } });
   assert.deepEqual(urls, ["/events?since=2026-01-02T03%3A04%3A05.000Z"]);
 });
+
+test("attaches the URL, method, headers and raw body to ApiError", async () => {
+  const request = createApiFetch({
+    baseUrl: "https://example.test",
+    fetch: async () =>
+      new Response("Token expired", {
+        status: 401,
+        headers: { "content-type": "text/plain", "www-authenticate": "Bearer" },
+      }),
+  });
+  await assert.rejects(request("/me", { method: "patch", query: { full: true } }), (error) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.status, 401);
+    assert.equal(error.problem, null);
+    assert.equal(error.message, "HTTP 401");
+    assert.equal(error.url, "https://example.test/me?full=true");
+    assert.equal(error.method, "PATCH");
+    assert.equal(error.headers.get("www-authenticate"), "Bearer");
+    assert.equal(error.body, "Token expired");
+    return true;
+  });
+  const manual = new ApiError(404, null);
+  assert.equal(manual.url, undefined);
+  assert.equal(manual.body, "");
+  assert.equal(manual.headers.get("x"), null);
+});

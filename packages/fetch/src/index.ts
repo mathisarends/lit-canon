@@ -8,18 +8,48 @@ export interface ApiProblem {
   [key: string]: unknown;
 }
 
+/** Request and response details attached to an {@link ApiError}. */
+export interface ApiErrorDetails {
+  /** The requested URL, including base URL and query string. */
+  url?: string;
+  /** The upper-case HTTP method. */
+  method?: string;
+  /** The response headers, e.g. for `Retry-After` or `WWW-Authenticate`. */
+  headers?: Headers;
+  /** The raw response body text. */
+  body?: string;
+  /** Overrides the message derived from the problem or status. */
+  message?: string;
+  cause?: unknown;
+}
+
 export class ApiError<
   P extends Partial<Pick<ApiProblem, "type" | "title" | "status" | "detail" | "instance">> =
     ApiProblem,
 > extends Error {
   readonly status: number;
   readonly problem: P | null;
+  /** The requested URL, including base URL and query string. */
+  readonly url: string | undefined;
+  /** The upper-case HTTP method. */
+  readonly method: string | undefined;
+  /** The response headers; empty when the error was created without a response. */
+  readonly headers: Headers;
+  /** The raw response body text; empty for HEAD, 204 and bodiless responses. */
+  readonly body: string;
 
-  constructor(status: number, problem: P | null) {
-    super(problem?.detail || problem?.title || `HTTP ${status}`);
+  constructor(status: number, problem: P | null, details: ApiErrorDetails = {}) {
+    super(
+      details.message ?? (problem?.detail || problem?.title || `HTTP ${status}`),
+      details.cause === undefined ? undefined : { cause: details.cause },
+    );
     this.name = "ApiError";
     this.status = status;
     this.problem = problem;
+    this.url = details.url;
+    this.method = details.method;
+    this.headers = details.headers ?? new Headers();
+    this.body = details.body ?? "";
   }
 }
 
@@ -151,7 +181,7 @@ function parseProblem(text: string): ApiProblem | null {
 }
 
 /** Returns parsed JSON, text, a Blob or undefined; throws ApiError for non-2xx responses. */
-async function readResponse<T>(response: Response, method: string): Promise<T> {
+async function readResponse<T>(response: Response, method: string, url: string): Promise<T> {
   const hasBody = method !== "HEAD" && response.status !== 204 && response.status !== 205;
   const contentType = response.headers.get("content-type");
   const json = isJson(contentType);
@@ -161,7 +191,12 @@ async function readResponse<T>(response: Response, method: string): Promise<T> {
   }
   const text = hasBody ? await response.text() : "";
   if (!response.ok) {
-    throw new ApiError(response.status, json && text ? parseProblem(text) : null);
+    throw new ApiError(response.status, json && text ? parseProblem(text) : null, {
+      url,
+      method,
+      headers: response.headers,
+      body: text,
+    });
   }
   if (!text) {
     return undefined as T;
@@ -179,13 +214,14 @@ export function createApiFetch(config: ApiFetchConfig = {}) {
     const encodedBody = encodeBody(body, headers);
     const target = ABSOLUTE_URL.test(url) ? url : baseUrl + url;
     const send = config.fetch ?? globalThis.fetch;
-    const response = await send(withQuery(target, query), {
+    const requestUrl = withQuery(target, query);
+    const response = await send(requestUrl, {
       ...init,
       credentials: init.credentials ?? config.credentials ?? "include",
       headers,
       body: encodedBody,
     });
-    return readResponse<T>(response, method);
+    return readResponse<T>(response, method, requestUrl);
   };
 }
 
