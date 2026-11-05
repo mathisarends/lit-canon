@@ -77,6 +77,10 @@ export interface ApiRequest {
 
 export interface ApiFetchConfig {
   baseUrl?: string;
+  /**
+   * Defaults to "same-origin", the fetch default. Set "include" to send cookies to an
+   * API on another origin.
+   */
   credentials?: RequestCredentials;
   /**
    * Static headers, or a function called before every request with the request path
@@ -287,7 +291,7 @@ export function createApiFetch(config: ApiFetchConfig = {}): ApiFetch {
       init: {
         ...init,
         method,
-        credentials: init.credentials ?? config.credentials ?? "include",
+        credentials: init.credentials ?? config.credentials ?? "same-origin",
         headers,
         body,
       },

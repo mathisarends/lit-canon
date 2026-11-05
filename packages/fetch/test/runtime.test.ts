@@ -27,7 +27,7 @@ test("serializes query, JSON and multipart requests and forwards overrides", asy
   const requests: Array<{ url: RequestInfo | URL; init: RequestInit }> = [];
   const request = createApiFetch({
     baseUrl: "https://example.test/",
-    credentials: "same-origin",
+    credentials: "include",
     headers: { "x-default": "default" },
     fetch: async (url, init) => {
       requests.push({ url, init: init ?? {} });
@@ -57,6 +57,7 @@ test("serializes query, JSON and multipart requests and forwards overrides", asy
   body.append("file", new Blob(["hello"]), "hello.txt");
   await request({ method: "POST", path: "https://uploads.test/file", body });
   assert.equal(requests[1].url, "https://uploads.test/file");
+  assert.equal(requests[1].init.credentials, "include");
   assert.equal(requests[1].init.body, body);
   assert.equal(new Headers(requests[1].init.headers).get("content-type"), null);
 });
@@ -361,4 +362,16 @@ test("layers config headers, content type, header parameters and per-call header
   assert.equal(sent[0].has("x-null"), false);
   assert.equal(sent[1].get("x-trace"), "call");
   assert.equal(sent[1].get("content-type"), "application/json");
+});
+
+test("sends cookies only to the same origin by default", async () => {
+  let credentials: RequestCredentials | undefined;
+  const request = createApiFetch({
+    fetch: async (_url, init) => {
+      credentials = init?.credentials;
+      return new Response(null, { status: 204 });
+    },
+  });
+  await request({ method: "GET", path: "/items" });
+  assert.equal(credentials, "same-origin");
 });
