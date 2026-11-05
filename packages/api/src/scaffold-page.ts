@@ -2,7 +2,7 @@ import { lstat, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 import { format, resolveConfig } from "prettier";
-import type { OpenAPIV3 } from "@scalar/openapi-types";
+import { isUrl, readInput, parseInput } from "./input.js";
 import { validateConfig, type CodegenConfig } from "./config.js";
 import { hasErrorCode, isWithin } from "./files.js";
 import { collectOperations, identifier, operationName } from "./openapi.js";
@@ -166,7 +166,8 @@ export async function scaffoldPage(config: CodegenConfig, options: PageScaffoldO
   if (!queries.size) throw new Error("At least one --query name=operation is required");
   const bindings = pairs(options.bindings ?? [], "binding");
   const usedBindings = new Set<string>();
-  const spec = JSON.parse(await readFile(resolve(cwd, config.input), "utf8")) as OpenAPIV3.Document;
+  const input = isUrl(config.input) ? config.input : resolve(cwd, config.input);
+  const spec = parseInput(await readInput(input), input);
   const { operationsByTag, mutationOperations } = collectOperations(spec, config);
   const imports = new Set<string>();
   const members: string[] = [];

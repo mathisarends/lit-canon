@@ -17,6 +17,7 @@ pnpm exec lit-canon-api add-page --feature src/features/products --name detail -
 
 `--config` defaults to `lit-canon-api.config.ts`. Feature and API paths are resolved
 against the config's directory, just as they are for `generate` and `check`.
+The OpenAPI input supports the same local JSON/YAML files and HTTP(S) URLs as generation.
 
 - `--feature`: feature directory; its last segment is its kebab-case name.
 - `--name`: kebab-case name local to that feature. Names and custom element tags

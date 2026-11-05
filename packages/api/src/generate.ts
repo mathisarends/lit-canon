@@ -2,8 +2,7 @@ import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promise
 import { basename, dirname, join, parse, relative, resolve, sep } from "node:path";
 import { generate as generateOrval } from "orval";
 import * as prettier from "prettier";
-import { parse as parseYaml } from "yaml";
-import type { OpenAPIV3 } from "@scalar/openapi-types";
+import { isUrl, isJson, readInput, parseInput } from "./input.js";
 import { validateConfig } from "./config.js";
 import type { CodegenConfig, GenerateOptions, GenerateResult } from "./config.js";
 import { renderApi } from "./render-api.js";
@@ -34,34 +33,6 @@ const tempPrefix = "lit-canon-api-";
 
 function resourceNamespace(tag: string): string {
   return tag.replace(/-([a-z0-9])/g, (_, character: string) => character.toUpperCase());
-}
-
-function isUrl(input: string): boolean {
-  return /^https?:\/\//i.test(input);
-}
-
-async function readInput(input: string): Promise<string> {
-  if (!isUrl(input)) {
-    return readFile(input, "utf8");
-  }
-  const response = await fetch(input);
-  if (!response.ok) {
-    throw new Error(`Could not fetch the OpenAPI input ${input}: HTTP ${response.status}`);
-  }
-  return response.text();
-}
-
-/** JSON documents start with "{"; anything else is read as YAML, a superset of JSON. */
-function isJson(source: string): boolean {
-  return source.trimStart().startsWith("{");
-}
-
-function parseInput(source: string, input: string): OpenAPIV3.Document {
-  try {
-    return (isJson(source) ? JSON.parse(source) : parseYaml(source)) as OpenAPIV3.Document;
-  } catch (error) {
-    throw new Error(`Could not parse the OpenAPI input ${input}`, { cause: error });
-  }
 }
 
 function importPath(fromDirectory: string, target: string): string {

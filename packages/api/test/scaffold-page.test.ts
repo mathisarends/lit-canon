@@ -5,6 +5,9 @@ import { join, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { after, before, test } from "node:test";
 import ts from "typescript";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { stringify } from "yaml";
 import { generate, scaffoldPage, type PageScaffoldOptions } from "../dist/index.js";
 import { openapi } from "./fixtures.ts";
 
@@ -33,6 +36,39 @@ const options = (feature: string): PageScaffoldOptions => ({
   path: "/items/:id",
   queries: ["item=get_item"],
   bindings: ["item.itemId=id"],
+});
+
+test("scaffolds from local YAML and remote JSON/YAML inputs", async () => {
+  const yaml = stringify(openapi());
+  await writeFile(join(root, "openapi.yaml"), yaml);
+  const local = await scaffoldPage({ ...config, input: "openapi.yaml" }, options("local-yaml"));
+  assert.deepEqual(diagnostics(local.files), []);
+  const server = createServer((request, response) => {
+    if (request.url === "/missing") {
+      response.statusCode = 404;
+      response.end();
+    } else response.end(request.url === "/json" ? JSON.stringify(openapi()) : yaml);
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    for (const format of ["json", "yaml"]) {
+      const result = await scaffoldPage(
+        { ...config, input: `${url}/${format}` },
+        options(`remote-${format}`),
+      );
+      assert.deepEqual(diagnostics(result.files), []);
+    }
+    await assert.rejects(
+      scaffoldPage({ ...config, input: `${url}/missing` }, options("missing-input")),
+      /HTTP 404/,
+    );
+    await assert.rejects(readFile(resolve(root, "src/features/missing-input/index.ts")), {
+      code: "ENOENT",
+    });
+  } finally {
+    server.close();
+  }
 });
 
 function diagnostics(files: string[]) {
