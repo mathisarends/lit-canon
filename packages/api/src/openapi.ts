@@ -258,9 +258,10 @@ export function collectOperations(spec: OpenAPIV3.Document, config: CodegenConfi
           `${method.toUpperCase()} ${path}`,
         ),
         bodyRequired: requestBody ? Boolean(requestBody.required) : undefined,
-        jsonContentType: Object.keys(requestBody?.content ?? {}).find(
-          (type) => type === "application/json" || type.endsWith("+json"),
-        ),
+        jsonContentType: Object.keys(requestBody?.content ?? {}).find((type) => {
+          const mediaType = type.split(";", 1)[0].trim().toLowerCase();
+          return mediaType === "application/json" || mediaType.endsWith("+json");
+        }),
         problems: config.problems === false ? [] : operationProblems(operation, spec),
       });
       operationsByTag.set(tag, operations);
