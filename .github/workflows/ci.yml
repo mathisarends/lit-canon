@@ -30,7 +30,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm example:check
       - run: pnpm format:check
-      # lit-canon-composition tests run in headless Chromium.
+      # API scaffold and composition tests run in headless Chromium.
       - run: pnpm --filter lit-canon-composition exec playwright install --with-deps chromium
       - run: pnpm test
       - run: pnpm test:package

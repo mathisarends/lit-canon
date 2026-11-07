@@ -8,6 +8,8 @@ import ts from "typescript";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { stringify } from "yaml";
+import { chromium } from "playwright";
+import { build } from "vite";
 import { generate, scaffoldPage, type PageScaffoldOptions } from "../dist/index.js";
 import { openapi } from "./fixtures.ts";
 
@@ -141,6 +143,71 @@ export const existingFeature = defineFeature({ name: "existing", pages: [], prov
     await readFile(join(directory, "index.ts"), "utf8"),
     /pages: \[existingDetail, existingList\]/,
   );
+});
+
+test("scaffolded route params trigger Lit updates with either class-field setting", async () => {
+  const browser = await chromium.launch();
+  try {
+    for (const useDefineForClassFields of [true, false]) {
+      const feature = useDefineForClassFields ? "native" : "assigned";
+      const result = await scaffoldPage(config, options(feature));
+      const component = join(result.feature, "pages/detail-page.ts");
+      const entry = component.replace(/\.ts$/, ".mjs");
+      // Compile independently of this repository's useDefineForClassFields: false.
+      await writeFile(
+        entry,
+        ts.transpileModule(await readFile(component, "utf8"), {
+          compilerOptions: {
+            target: ts.ScriptTarget.ES2022,
+            module: ts.ModuleKind.ESNext,
+            useDefineForClassFields,
+          },
+        }).outputText,
+      );
+      const bundle = await build({
+        configFile: false,
+        logLevel: "silent",
+        build: {
+          write: false,
+          minify: false,
+          target: "es2022",
+          lib: { entry, name: "Scaffold", formats: ["iife"] },
+        },
+      });
+      const output = Array.isArray(bundle) ? bundle[0] : bundle;
+      assert.ok("output" in output);
+      const chunk = output.output.find((file) => file.type === "chunk");
+      assert.ok(chunk);
+      const page = await browser.newPage();
+      try {
+        await page.addScriptTag({ content: chunk.code });
+        const result = await page.evaluate((tag) => {
+          const element = document.createElement(tag) as HTMLElement & {
+            params: { id: string };
+            requestUpdate(): void;
+          };
+          const initial = element.params;
+          let updates = 0;
+          // The real Lit setter must schedule an update for each route change.
+          element.requestUpdate = () => {
+            updates++;
+          };
+          element.params = { id: "first" };
+          element.params = { id: "second" };
+          return { initial, updates, params: element.params };
+        }, `${feature}-detail-page`);
+        assert.deepEqual(result, {
+          initial: { id: "" },
+          updates: 2,
+          params: { id: "second" },
+        });
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await browser.close();
+  }
 });
 
 test("fails before writing on missing bindings, writes and unsupported paths", async () => {

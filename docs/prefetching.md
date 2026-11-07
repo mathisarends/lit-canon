@@ -93,6 +93,11 @@ export const productsDetail = definePage({
 });
 ```
 
+The scaffold declares `params` with `declare` and initializes it in the constructor.
+Keep that pattern when editing the page: an instance class field can hide Lit's
+reactive setter under ES2022 class-field semantics. Constructor assignment works
+with either value of TypeScript's `useDefineForClassFields`.
+
 In the component:
 
 ```ts

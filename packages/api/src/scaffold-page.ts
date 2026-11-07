@@ -265,7 +265,11 @@ import { createQueryController } from "@tanstack/lit-query";
 import { ${factory}, type ${paramsType} } from "./${options.name}.queries.js";
 export class ${className} extends LitElement {
   static override properties = { params: { attribute: false } };
-  params: ${paramsType} = { ${params.map((p) => `${p}: ""`).join(", ")} };
+  declare params: ${paramsType};
+  constructor() {
+    super();
+    this.params = { ${params.map((p) => `${p}: ""`).join(", ")} };
+  }
   ${[...queries.keys()].map((key) => `private readonly ${key}Query = createQueryController(this, () => ({ ...${factory}(this.params).${key}, enabled: Object.values(this.params).every(Boolean) }));`).join("\n")}
   protected override render() {
     ${[...queries.keys()].map((key) => `const ${key}Result = this.${key}Query();\nif (${key}Result.isPending) return html\`<p>Loading…</p>\`;\nif (${key}Result.isError) return html\`<p role="alert">\${${key}Result.error.message}</p>\`;`).join("\n")}
