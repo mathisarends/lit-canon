@@ -101,7 +101,9 @@ JSON, text, `Blob` and `FormData` bodies can be sent again on a retry; a
 - **Bodies**: plain objects, arrays and `null` are sent as JSON with
   `content-type: application/json`, unless a content type is set. JSON scalar bodies
   (strings, numbers and booleans) are serialized when the content type is JSON;
-  generated JSON operations supply that content type. `FormData`, `Blob`
+  generated JSON operations supply the declared content type. JSON media types are
+  recognized regardless of case and parameters such as `charset=utf-8`; the original
+  content type is kept on the request. `FormData`, `Blob`
   and other native bodies are passed through. For `FormData`, any configured or
   per-request content type is removed so `fetch` can set `multipart/form-data` with
   its boundary.

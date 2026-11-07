@@ -70,20 +70,30 @@ test("sends scalar JSON request bodies with the declared media type", async () =
   await mkdir(directory);
   const spec = openapi();
   spec.paths = {};
-  for (const type of ["string", "number", "boolean"] as const) {
-    spec.paths[`/${type}`] = {
-      post: {
-        tags: ["values"],
-        operationId: `send_${type}`,
-        requestBody: { required: true, content: { "application/json": { schema: { type } } } },
-        responses: { 204: { description: "OK" } },
-      },
-    };
+  const contentTypes = [
+    "application/json",
+    "application/json; charset=utf-8",
+    "Application/JSON; Charset=UTF-8",
+    "application/vnd.example+json; charset=utf-8",
+    "APPLICATION/MERGE-PATCH+JSON; charset=utf-8",
+  ];
+  for (const [index, contentType] of contentTypes.entries()) {
+    for (const type of ["string", "number", "boolean"] as const) {
+      spec.paths[`/${type}/${index}`] = {
+        post: {
+          tags: ["values"],
+          operationId: `send_${type}_${index}`,
+          requestBody: { required: true, content: { [contentType]: { schema: { type } } } },
+          responses: { 204: { description: "OK" } },
+        },
+      };
+    }
   }
   const input = join(directory, "openapi.json");
   await writeFile(input, JSON.stringify(spec));
   const output = join(directory, "generated");
-  await generate({ input, output });
+  const result = await generate({ input, output });
+  assert.deepEqual(typecheck(output, result.files), []);
   await compile(join(output, "values"), ["api"]);
   const sent: Request[] = [];
   configureApiFetch({
@@ -93,15 +103,17 @@ test("sends scalar JSON request bodies with the declared media type", async () =
     },
   });
   const api = await import(pathToFileURL(join(output, "values/api.js")).href);
-  for (const [name, value] of [
-    ["sendString", "hello"],
-    ["sendNumber", 42],
-    ["sendBoolean", false],
-  ] as const) {
-    await api[name]({ body: value });
-    const request = sent.at(-1)!;
-    assert.equal(request.headers.get("content-type"), "application/json");
-    assert.equal(await request.text(), JSON.stringify(value));
+  for (const [index, contentType] of contentTypes.entries()) {
+    for (const [name, value] of [
+      ["sendString", "hello"],
+      ["sendNumber", 42],
+      ["sendBoolean", false],
+    ] as const) {
+      await api[`${name}${index}`]({ body: value });
+      const request = sent.at(-1)!;
+      assert.equal(request.headers.get("content-type"), contentType);
+      assert.equal(await request.text(), JSON.stringify(value));
+    }
   }
 });
 before(async () => {
