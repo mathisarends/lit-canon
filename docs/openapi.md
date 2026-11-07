@@ -45,6 +45,11 @@ Generated export names must not collide. An operation named `all` conflicts with
 `getItemQuery` or `GetItemInput`, conflicts with it. Both fail before the existing
 client is replaced.
 
+Model names must also leave required module imports available. For example, an
+`ApiRequestOptions` model used by an API function or an `ApiError` problem model
+conflicts with the runtime imports. These fail with `Duplicate generated module
+binding` before the existing client is replaced; rename the schema to resolve it.
+
 Generated TypeScript types describe the API contract; the runtime does not validate
 response bodies against the schema.
 

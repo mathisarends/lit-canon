@@ -845,6 +845,48 @@ test("rejects generated name collisions and unsupported parameter serialization 
   assert.equal(await readFile(join(output, "index.ts"), "utf8"), existing);
 });
 
+test("rejects runtime import collisions before replacing an existing client", async () => {
+  const directory = join(root, "runtime-collisions");
+  await mkdir(directory);
+  const input = join(directory, "openapi.json");
+  const output = join(directory, "generated");
+  await writeFile(input, JSON.stringify(openapi()));
+  const config = { input, output };
+  const result = await generate(config);
+  const snapshot = () =>
+    Promise.all(result.files.map((file) => readFile(join(output, file), "utf8")));
+  const previous = await snapshot();
+
+  for (const name of ["ApiRequestOptions", "ApiError"]) {
+    const spec = openapi();
+    spec.components!.schemas![name] = {
+      type: "object",
+      required: ["type", "title", "status"],
+      properties: {
+        type: { type: "string" },
+        title: { type: "string" },
+        status: { type: "integer" },
+      },
+    };
+    const schema = { $ref: `#/components/schemas/${name}` };
+    const operation = spec.paths["/items"]!.post!;
+    if (name === "ApiRequestOptions") {
+      operation.requestBody = { required: true, content: { "application/json": { schema } } };
+    } else {
+      operation.responses!["400"] = {
+        description: "Problem",
+        content: { "application/problem+json": { schema } },
+      };
+    }
+    await writeFile(input, JSON.stringify(spec));
+    const collision = new RegExp(`Duplicate generated module binding: ${name}`);
+    await assert.rejects(generate(config), collision);
+    await assert.rejects(generate(config, { check: true }), collision);
+    assert.deepEqual(await snapshot(), previous);
+    assert.deepEqual(typecheck(output, result.files), []);
+  }
+});
+
 test("converts tags such as Title Case or PascalCase to resource directories", async () => {
   const directory = join(root, "tag-names");
   await mkdir(directory);
