@@ -44,6 +44,11 @@ Run a single package with `pnpm --filter <name> <script>`, for example
 `pnpm --filter lit-canon-fetch test`. The composition example app runs with
 `pnpm --filter lit-canon-composition example`.
 
+The API scaffold tests also use headless Chromium. They compile scaffolded pages
+with both values of `useDefineForClassFields` and check that route parameters
+trigger Lit updates. The Playwright installation above supplies the browser for
+both the API and composition tests.
+
 `test:package` must run through pnpm: it uses pnpm to pack and to install the
 tarballs, and checks that only `dist/`, `README.md`, `LICENSE` and `package.json`
 are published and that no `workspace:` specifier remains.

@@ -5,7 +5,11 @@ import { createQueryController } from "@tanstack/lit-query";
 import { productsListQueries, type ProductsListParams } from "./list.queries.js";
 export class ProductsListPage extends LitElement {
   static override properties = { params: { attribute: false } };
-  params: ProductsListParams = {};
+  declare params: ProductsListParams;
+  constructor() {
+    super();
+    this.params = {};
+  }
   private readonly productsQuery = createQueryController(this, () => ({
     ...productsListQueries(this.params).products,
     enabled: Object.values(this.params).every(Boolean),
